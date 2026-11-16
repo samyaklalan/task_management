@@ -1,0 +1,32 @@
+services:
+  postgres:
+    # Use the official PostgreSQL 17 image, based on Alpine Linux.
+    image: postgres:17-alpine
+    # Give the container a predictable name instead of a generated one.
+    container_name: task_management_postgres
+    # Restart the container automatically unless it was explicitly stopped.
+    restart: unless-stopped
+    environment:
+      # Use the values from the root .env file, with defaults where provided.
+      POSTGRES_USER: ${POSTGRES_USER:-taskapp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}
+      POSTGRES_DB: ${POSTGRES_DB:-task_management}
+    ports:
+      # Expose PostgreSQL on localhost:5433; inside the container it uses 5432.
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    # Keep database files in a Docker-managed volume, separate from the container.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Run initialization scripts when PostgreSQL first creates an empty data directory.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    # Wait until PostgreSQL responds before considering the container healthy.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+# Docker creates and manages this named volume for persistent database storage.
+volumes:
+  postgres_data:
