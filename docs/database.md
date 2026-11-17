@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Document | `docs/database.md` |
-| Version | Draft v1 (16 Nov 2026) |
-| Sources | Updated ER diagram; *Schema Review: Project Management POC* (13 Nov 2026) |
+| Version | Draft v2 (17 Nov 2026): adds the `spaces` table and `tasks.space_id` |
+| Sources | Updated ER diagram, extended with SPACES (`er_with_spaces.png`); *Schema Review: Project Management POC* (13 Nov 2026) |
 | Database | PostgreSQL 15 or newer (required by proposal P6); exact version pinned in `docker-compose.yml` (step D3) |
 | Status | Columns and relationships approved. Items marked **P-n** are proposals awaiting mentor approval. |
 
@@ -18,7 +18,7 @@ Every rule in this document comes from one of these sources:
 | **PDF #n** | Correction number *n* in the Schema Review PDF |
 | **P-n** | Proposal. The diagram and PDF are silent here, so the rule needs mentor approval before migration B18. See section 9. |
 
-No columns have been added, renamed or removed. Every column below appears in the updated ER diagram with the same name.
+No columns have been added, renamed or removed. Every column below appears in the updated ER diagram with the same name. The `spaces` table and `tasks.space_id` come from the extended diagram (`er_with_spaces.png`).
 
 ---
 
@@ -49,15 +49,18 @@ No columns have been added, renamed or removed. Every column below appears in th
 | 4 | `teams` | A named group of users inside a project | project |
 | 5 | `team_members` | Which users are in which team (junction) | team + user |
 | 6 | `task_statuses` | A project's custom workflow columns (e.g. To Do, In Review) | project |
-| 7 | `tasks` | Work items, numbered per project | project |
+| 7 | `tasks` | Work items, numbered per project, grouped into a space | project + space |
 | 8 | `task_comments` | Discussion on a task | task |
 | 9 | `roles` | Named roles defined per organization (e.g. Admin, Developer) | organization |
 | 10 | `role_permissions` | What a role may do per feature (view/create/edit/delete) | role |
 | 11 | `user_roles` | Which role a user has in which project (junction) | user + role + project |
 | 12 | `refresh_tokens` | Long-lived login sessions (hashed) | user |
 | 13 | `password_reset_tokens` | One-time password reset links (hashed) | user |
+| 14 | `spaces` | Sub-workspaces inside a project (e.g. Frontend, Backend, QA) that group its tasks | project |
 
-**Tenant isolation:** Only `users`, `projects` and `roles` store `organization_id`. Every other table reaches its organization through its parent. For example, a task belongs to a project, and the project belongs to an organization. Every query for tasks, teams, statuses or comments is therefore filtered through a project the caller is allowed to see.
+**Tenant isolation:** Only `users`, `projects` and `roles` store `organization_id`. Every other table reaches its organization through its parent. For example, a task belongs to a project, and the project belongs to an organization. Every query for tasks, spaces, teams, statuses or comments is therefore filtered through a project the caller is allowed to see.
+
+**Hierarchy:** Organization → Project → Space → Task. A task keeps `project_id` as well as `space_id`, so project-wide numbering (`WEB-42`) and reporting work without going through spaces.
 
 ---
 
@@ -198,6 +201,7 @@ Constraints and indexes:
 |---|---|---|---|---|---|---|
 | id | BIGINT | No | identity | PK | Internal only | ERD |
 | project_id | BIGINT | No | | FK → projects.id | | ERD |
+| space_id | BIGINT | No | | FK → spaces.id | The space the task is grouped in. Must belong to the same project (P-12). | ERD, P-13 |
 | status_id | BIGINT | No | | FK → task_statuses.id | Must belong to the same project (P-12) | ERD |
 | assignee_id | BIGINT | Yes | | FK → users.id | Unassigned = NULL | ERD, P-3 |
 | created_by | BIGINT | No | | FK → users.id | Who created the task | ERD |
@@ -213,6 +217,7 @@ Constraints and indexes:
 Constraints and indexes:
 
 - `uq_tasks_project_id_number` UNIQUE (`project_id`, `number`) **(PDF #4, #9)**. This also serves every "tasks of this project" query, because `project_id` is its leftmost column. That's why the separate `tasks.project_id` index listed in PDF #10 isn't created **(P-7)**.
+- `ix_tasks_space_id` (`space_id`) **(P-13)**: lists a space's tasks (the space board), and checks whether a space still has tasks before deleting it.
 - `ix_tasks_status_id` (`status_id`) **(PDF #10)**: used when checking whether a status is still in use before deleting it.
 - `ix_tasks_assignee_id` (`assignee_id`) **(PDF #10)**: "my tasks", and clearing assignees.
 - `ix_tasks_title_trgm` GIN (`title gin_trgm_ops`) **(P-9)**: fast case-insensitive `ILIKE '%login%'` search across all of a project's tasks.
@@ -220,6 +225,7 @@ Constraints and indexes:
 - `ck_tasks_number_positive` CHECK (`number >= 1`) **(P-5)**
 - `ck_tasks_date_range` CHECK (`start_date IS NULL OR end_date IS NULL OR end_date >= start_date`) **(P-5)**
 - `fk_tasks_project_id_projects` ON DELETE CASCADE **(P-4)**
+- `fk_tasks_space_id_spaces` ON DELETE NO ACTION **(P-4, P-13)**: a space that still has tasks can't be deleted. Move the tasks to another space first.
 - `fk_tasks_status_id_task_statuses` ON DELETE NO ACTION **(P-4)**: a status that tasks still use can't be deleted.
 - `fk_tasks_assignee_id_users` ON DELETE SET NULL **(P-4)**
 - `fk_tasks_created_by_users` ON DELETE NO ACTION **(P-4)**
@@ -230,6 +236,7 @@ Constraints and indexes:
 | Candidate | Query it would serve |
 |---|---|
 | (`project_id`, `status_id`, `created_at` DESC) | Board/list filtered by status, newest first |
+| (`space_id`, `status_id`) | A space's board, grouped by status column (could replace `ix_tasks_space_id`) |
 | (`project_id`, `created_at` DESC) | Project task list, newest first, unfiltered |
 | (`assignee_id`, `project_id`) | "My tasks in this project" |
 
@@ -345,6 +352,41 @@ Constraints and indexes:
 
 A token is valid only when `used_at IS NULL AND expires_at > now()`.
 
+### 3.14 spaces
+
+A space is a sub-workspace inside a project. It sits between projects (parent) and tasks (child): a project has many spaces, and each task is placed in one space.
+
+| Column | Type | Null | Default | Key | Notes | Source |
+|---|---|---|---|---|---|---|
+| id | BIGINT | No | identity | PK | | ERD |
+| project_id | BIGINT | No | | FK → projects.id | The parent project | ERD |
+| name | VARCHAR(100) | No | | | e.g. "General", "Backend", "QA" | ERD, P-2 |
+| description | TEXT | Yes | | | | ERD, P-3 |
+| position | INTEGER | No | | | Display order of spaces in the project (0, 1, 2, …) | ERD |
+| created_at | TIMESTAMPTZ | No | now() | | | ERD |
+| updated_at | TIMESTAMPTZ | No | now() | | | ERD |
+
+Constraints and indexes:
+
+- `ix_spaces_project_id_position` (`project_id`, `position`) **(P-7, P-13)**. Like `task_statuses`, a single index covers the foreign-key lookup and returns a project's spaces already in display order.
+- `ck_spaces_position_non_negative` CHECK (`position >= 0`) **(P-5)**
+- `fk_spaces_project_id_projects` ON DELETE CASCADE **(P-4)**
+
+`position` is deliberately **not** unique, for the same reason as `task_statuses.position`. The UI sorts by (`position`, `id`).
+
+**Why spaces exist:**
+
+- **Less task clutter.** Without spaces, every task in a large project sits in one flat list, which gets hard to navigate as the number of tasks grows.
+- **Separate areas for teams.** Large projects involve distinct groups (Frontend, Backend, Design, QA) that need their own work areas without getting in each other's way.
+- **Deliberate ordering.** `position` lets users order spaces by priority instead of by creation date.
+- **Scales with the project.** A small project works with a single default "General" space. A large initiative can have dozens of spaces under the same project, without splitting it into separate projects.
+
+**How spaces are used:**
+
+- **Grouping tasks.** When a task is created it's placed in a space (e.g. an API bug goes into "Backend"). It keeps `project_id` for project-wide numbering and reporting.
+- **Boards per space.** A space is the container for a Kanban board or list view. Teams filter by space to track progress per department.
+- **Workflow.** Spaces use their project's `task_statuses`, so every space's board shows the same columns. The task's `status_id` decides its column within the space. Per-space statuses aren't part of this design (see section 9).
+
 ---
 
 ## 4. Relationships explained
@@ -359,6 +401,8 @@ A token is valid only when `used_at IS NULL AND expires_at > now()`.
 | Project → Teams | 1 → N | `teams.project_id` | Teams group people *within* a project (e.g. "Frontend squad"). Deleting a project removes its teams. |
 | Project → Task Statuses | 1 → N | `task_statuses.project_id` | Every project has its own workflow. One project can use "To Do → Doing → Done" and another "Backlog → QA → Released". |
 | Project → Tasks | 1 → N | `tasks.project_id` | Every task lives in exactly one project and is numbered within it (`WEB-1`, `WEB-2`, …). |
+| Project → Spaces | 1 → N | `spaces.project_id` | Splits a project into sub-workspaces (e.g. Frontend, Backend). Deleting a project removes its spaces. |
+| Space → Tasks | 1 → N | `tasks.space_id` | Each task sits in exactly one space of its own project. Moving a task to another space changes only `space_id`; its number stays the same. |
 | Project → User Roles | 1 → N | `user_roles.project_id` | Gives a user a role *in this project*. This is how project membership and access work: no role row means no access. |
 | Task → Task Status | N → 1 | `tasks.status_id` | Each task sits in exactly one status (one board column). Moving a task between columns changes only `status_id`. |
 | Task → Assignee | N → 1 (optional) | `tasks.assignee_id` | The single person responsible. NULL means unassigned. |
@@ -422,6 +466,7 @@ team_id | user_id
 | team_members | `ix_team_members_user_id` | btree | user's teams | PDF #10 |
 | task_statuses | `ix_task_statuses_project_id_position` | btree | project's statuses in order | PDF #10, P-7 |
 | tasks | `uq_tasks_project_id_number` | unique | numbering rule + project's tasks | PDF #4, #9, P-7 |
+| tasks | `ix_tasks_space_id` | btree | space's tasks + space-in-use check | P-13 |
 | tasks | `ix_tasks_status_id` | btree | status-in-use check | PDF #10 |
 | tasks | `ix_tasks_assignee_id` | btree | "my tasks" | PDF #10 |
 | tasks | `ix_tasks_title_trgm` | GIN (pg_trgm) | title search | P-9 |
@@ -435,6 +480,7 @@ team_id | user_id
 | refresh_tokens | `ix_refresh_tokens_user_id` | btree | revoke all sessions | PDF #10 |
 | password_reset_tokens | `uq_password_reset_tokens_token_hash` | unique | reset lookup | P-10 |
 | password_reset_tokens | `ix_password_reset_tokens_user_id` | btree | invalidate older tokens | PDF #10 |
+| spaces | `ix_spaces_project_id_position` | btree | project's spaces in order | P-7, P-13 |
 
 Intentionally **not** created (P-7): `tasks.project_id`, `projects.organization_id`, `role_permissions.role_id` and `task_comments.task_id` as standalone indexes, because the indexes above already cover each of them. `tasks.created_by` and `task_comments.author_id` aren't indexed either, because no query uses them and their parent rows are never deleted.
 
@@ -445,17 +491,18 @@ Intentionally **not** created (P-7): `tasks.project_id`, `projects.organization_
 | Child FK | On parent delete | Why |
 |---|---|---|
 | users / projects / roles → organizations | NO ACTION (blocked) | Organizations are never deleted in this POC |
-| teams / task_statuses / tasks / user_roles → projects | CASCADE | A project's contents go with it. The API only **archives** projects (`status = 'archived'`); CASCADE matters only if hard delete is approved later. |
+| teams / task_statuses / spaces / tasks / user_roles → projects | CASCADE | A project's contents go with it. The API only **archives** projects (`status = 'archived'`); CASCADE matters only if hard delete is approved later. |
 | team_members → teams | CASCADE | Deleting a team removes its memberships |
 | team_members / user_roles / refresh_tokens / password_reset_tokens → users | CASCADE | Users are deactivated, not deleted. CASCADE is the safe default if an account is ever erased. |
 | tasks.status_id → task_statuses | NO ACTION (blocked) | Move the tasks to another status first. The API returns 409 Conflict. |
+| tasks.space_id → spaces | NO ACTION (blocked) | Move the tasks to another space first. The API returns 409 Conflict. |
 | tasks.assignee_id → users | SET NULL | The task becomes unassigned |
 | tasks.created_by, task_comments.author_id → users | NO ACTION (blocked) | Authorship history must stay intact |
 | task_comments → tasks | CASCADE | Comments have no meaning without their task |
 | role_permissions → roles | CASCADE | Permissions belong to the role |
 | user_roles.role_id → roles | NO ACTION (blocked) | Can't delete a role while users still hold it |
 
-**Why NO ACTION instead of RESTRICT for `tasks.status_id`:** deleting a project cascades to both its tasks and its statuses in the same statement. RESTRICT checks immediately, so it could fail halfway through depending on the order Postgres processes the rows. NO ACTION checks at the end of the statement, when the tasks are already gone. For a direct "delete this status" request, both behave the same: the delete is blocked.
+**Why NO ACTION instead of RESTRICT for `tasks.status_id` and `tasks.space_id`:** deleting a project cascades to its tasks, statuses and spaces in the same statement. RESTRICT checks immediately, so it could fail halfway through depending on the order Postgres processes the rows. NO ACTION checks at the end of the statement, when the tasks are already gone. For a direct "delete this status" request, both behave the same: the delete is blocked.
 
 ---
 
@@ -493,11 +540,14 @@ The ER diagram and PDF don't decide these points. Each item below is the recomme
 | P-9 | Enable the `pg_trgm` extension; GIN trigram index on `tasks.title`; search matches title (plus an exact match when the user types a task key like `WEB-42`) | `ILIKE '%term%'` can't use a normal index. Trigram indexes can, and they need at least 3 characters, which matches the 3-character search rule. | Full-text search (`tsvector`): better for long text, worse for partial words |
 | P-10 | UNIQUE on `token_hash` in both token tables; store SHA-256 hashes, never raw tokens | Every refresh or reset looks tokens up by hash, and a leaked database can't be used to hijack sessions | Plain non-unique index |
 | P-11 | Optimistic concurrency using the existing `updated_at`: clients send back the value they loaded; the update runs `WHERE id = … AND updated_at = …` and returns 409 Conflict if another user saved first | Prevents silent overwrites when two people edit one task, with no new `version` column | Add a `version INTEGER` column (schema change) |
-| P-12 | Same-project and same-organization rules are enforced in the service layer inside the transaction: the task's status must be in the task's project, and the assignee, role and project must share an organization | A plain FK can't express "same project". Composite FKs would need extra unique constraints. | Composite FKs, e.g. (`status_id`, `project_id`) → `task_statuses (id, project_id)` |
+| P-12 | Same-project and same-organization rules are enforced in the service layer inside the transaction: the task's status and space must be in the task's project, and the assignee, role and project must share an organization | A plain FK can't express "same project". Composite FKs would need extra unique constraints. | Composite FKs, e.g. (`status_id`, `project_id`) → `task_statuses (id, project_id)` |
+| P-13 | Spaces: `tasks.space_id` is NOT NULL, so every task is in a space. Creating a project also creates a default "General" space at `position = 0`, and a project must always keep at least one space. Indexes `ix_spaces_project_id_position` and `ix_tasks_space_id`. A space with tasks can't be deleted (409 Conflict). | Tasks are never "loose" outside a space, so every board and filter works the same way. A small project just uses "General". | `space_id` nullable, where NULL means "no space" (simpler, but every query has to handle the NULL case) |
 
 **Optional, not proposed.** Mention these to your mentor; they are not in the plan unless approved:
 
 - UNIQUE (`project_id`, `name`) on `teams` and `task_statuses`, and UNIQUE (`organization_id`, `name`) on `roles`, to prevent two statuses both called "Done".
+- Per-space workflow statuses: add a nullable `space_id` to `task_statuses` so a space can have its own columns. Not in the current diagram; spaces share their project's statuses for now.
+- UNIQUE (`project_id`, `name`) on `spaces`, to prevent two spaces both called "Backend" in one project.
 - An idempotency-keys table. Decision so far: not needed for the POC. Unique constraints already block duplicate organizations, emails, project prefixes, memberships and task numbers. Repeated "create task" clicks are handled by disabled buttons and loading states in the frontend.
 
 ---
@@ -563,9 +613,19 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
+    SPACES {
+        bigint id PK
+        bigint project_id FK
+        varchar name
+        text description
+        integer position
+        timestamp created_at
+        timestamp updated_at
+    }
     TASKS {
         bigint id PK
         bigint project_id FK
+        bigint space_id FK
         bigint status_id FK
         bigint assignee_id FK
         bigint created_by FK
@@ -632,6 +692,8 @@ erDiagram
     PROJECTS ||--o{ TEAMS : contains
     PROJECTS ||--o{ TASK_STATUSES : defines
     PROJECTS ||--o{ TASKS : contains
+    PROJECTS ||--o{ SPACES : has
+    SPACES ||--o{ TASKS : groups
     PROJECTS ||--o{ USER_ROLES : scopes
     TEAMS ||--o{ TEAM_MEMBERS : has
     USERS ||--o{ TEAM_MEMBERS : belongs_to
