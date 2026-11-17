@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "task-management-backend"
+version = "0.1.0"
+description = "Project Management POC: FastAPI backend"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework + ASGI server
+    "fastapi==0.163.1",
+    "uvicorn[standard]==0.54.0",
+    # Database: async ORM, PostgreSQL async driver, migrations
+    "sqlalchemy[asyncio]==2.1.8",
+    "asyncpg==0.32.0",
+    "alembic==1.20.1",
+    # Validation and settings
+    "pydantic[email]==2.14.3",
+    "pydantic-settings==2.16.3",
+    # Security: JWT access tokens, Argon2 password hashing
+    "pyjwt==2.15.1",
+    "argon2-cffi==25.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.2.0",
+    "httpx==0.28.1",
+    "ruff==0.17.5",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
