@@ -7,6 +7,7 @@ Timestamps: created_at, updated_at come from TimestampMixin (app/db/base.py).
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     ForeignKey,
@@ -36,11 +37,16 @@ class User(TimestampMixin, Base):
 
     id: Mapped[BigIntPK]
     organization_id: Mapped[int] = mapped_column(
+        BigInteger,  # explicit: don't rely on borrowing the type from organizations.id
         ForeignKey("organizations.id", ondelete="NO ACTION"),
         index=True,  # ix_users_organization_id (PDF #10): the organization's user list
     )
     name: Mapped[str] = mapped_column(String(USER_NAME_MAX_LENGTH))
     email: Mapped[str] = mapped_column(String(USER_EMAIL_MAX_LENGTH))
+    # defer hide the co;lumn so select user is run only fetch all field except password
+    # defref_raiseload as true
+    # raiseinload measn it will give youeror right awaya nd tell
+    # toy the cloumn not loaded you nee to ask for it
     # Deferred: never loaded by a normal ``select(User)``. Reading it without asking
     # for it explicitly raises an error instead of quietly running another query.
     # Only login and password changes load it, with ``undefer(User.password_hash)``.
