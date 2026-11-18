@@ -39,9 +39,7 @@ SERVER_SETTINGS: dict[str, str] = {
 }
 
 
-def create_engine(
-    settings: Settings | None = None, *, url: str | None = None
-) -> AsyncEngine:
+def create_engine(settings: Settings | None = None, *, url: str | None = None) -> AsyncEngine:
     """Build an engine. ``url`` overrides the configured one (tests use the test DB)."""
     settings = settings or get_settings()
     return create_async_engine(

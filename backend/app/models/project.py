@@ -49,9 +49,7 @@ class Project(TimestampMixin, Base):
         # separate organization_id index is created (P-7).
         UniqueConstraint("organization_id", "task_prefix"),
         CheckConstraint(f"status IN ({_STATUS_VALUES})", name="status"),
-        CheckConstraint(
-            f"task_prefix ~ '{TASK_PREFIX_PATTERN}'", name="task_prefix_format"
-        ),
+        CheckConstraint(f"task_prefix ~ '{TASK_PREFIX_PATTERN}'", name="task_prefix_format"),
         CheckConstraint("next_task_number >= 1", name="next_task_number_positive"),
         CheckConstraint(
             "start_date IS NULL OR end_date IS NULL OR end_date >= start_date",
