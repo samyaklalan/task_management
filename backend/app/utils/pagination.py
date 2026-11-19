@@ -96,7 +96,9 @@ async def paginate(
     # ORDER BY doesn't change a count, so it is dropped from the subquery.
     # Loader options (joinedload) are ignored inside a subquery, so the count
     # doesn't join the tables they would load.
-    count_statement = select(func.count()).select_from(statement.order_by(None).subquery())
+    count_statement = select(func.count()).select_from(
+        statement.order_by(None).subquery()
+    )
     total_items: int = await session.scalar(count_statement) or 0
 
     items: list[Any] = []
