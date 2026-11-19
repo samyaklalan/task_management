@@ -67,9 +67,7 @@ def upgrade() -> None:
         sa.Column("organization_id", sa.BigInteger(), nullable=False),
         sa.Column("public_id", sa.String(length=16), nullable=False),
         sa.Column("name", sa.String(length=150), nullable=False),
-        sa.Column(
-            "status", sa.String(length=20), server_default="active", nullable=False
-        ),
+        sa.Column("status", sa.String(length=20), server_default="active", nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("task_prefix", sa.String(length=10), nullable=False),
         sa.Column("next_task_number", sa.Integer(), server_default="1", nullable=False),
@@ -141,9 +139,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_roles")),
     )
-    op.create_index(
-        op.f("ix_roles_organization_id"), "roles", ["organization_id"], unique=False
-    )
+    op.create_index(op.f("ix_roles_organization_id"), "roles", ["organization_id"], unique=False)
     op.create_table(
         "users",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
@@ -151,9 +147,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=150), nullable=False),
         sa.Column("email", sa.String(length=254), nullable=False),
         sa.Column("password_hash", sa.String(length=255), nullable=False),
-        sa.Column(
-            "is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False
-        ),
+        sa.Column("is_active", sa.Boolean(), server_default=sa.text("true"), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -166,9 +160,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.CheckConstraint(
-            "email = lower(email)", name=op.f("ck_users_email_lowercase")
-        ),
+        sa.CheckConstraint("email = lower(email)", name=op.f("ck_users_email_lowercase")),
         sa.ForeignKeyConstraint(
             ["organization_id"],
             ["organizations.id"],
@@ -178,9 +170,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_users")),
         sa.UniqueConstraint("email", name=op.f("uq_users_email")),
     )
-    op.create_index(
-        op.f("ix_users_organization_id"), "users", ["organization_id"], unique=False
-    )
+    op.create_index(op.f("ix_users_organization_id"), "users", ["organization_id"], unique=False)
     op.create_table(
         "password_reset_tokens",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
@@ -201,9 +191,7 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_password_reset_tokens")),
-        sa.UniqueConstraint(
-            "token_hash", name=op.f("uq_password_reset_tokens_token_hash")
-        ),
+        sa.UniqueConstraint("token_hash", name=op.f("uq_password_reset_tokens_token_hash")),
     )
     op.create_index(
         op.f("ix_password_reset_tokens_user_id"),
@@ -234,26 +222,16 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_refresh_tokens")),
         sa.UniqueConstraint("token_hash", name=op.f("uq_refresh_tokens_token_hash")),
     )
-    op.create_index(
-        op.f("ix_refresh_tokens_user_id"), "refresh_tokens", ["user_id"], unique=False
-    )
+    op.create_index(op.f("ix_refresh_tokens_user_id"), "refresh_tokens", ["user_id"], unique=False)
     op.create_table(
         "role_permissions",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
         sa.Column("role_id", sa.BigInteger(), nullable=False),
         sa.Column("feature", sa.String(length=50), nullable=False),
-        sa.Column(
-            "view_perm", sa.Boolean(), server_default=sa.text("false"), nullable=False
-        ),
-        sa.Column(
-            "create_perm", sa.Boolean(), server_default=sa.text("false"), nullable=False
-        ),
-        sa.Column(
-            "edit_perm", sa.Boolean(), server_default=sa.text("false"), nullable=False
-        ),
-        sa.Column(
-            "delete_perm", sa.Boolean(), server_default=sa.text("false"), nullable=False
-        ),
+        sa.Column("view_perm", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column("create_perm", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column("edit_perm", sa.Boolean(), server_default=sa.text("false"), nullable=False),
+        sa.Column("delete_perm", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.ForeignKeyConstraint(
             ["role_id"],
             ["roles.id"],
@@ -261,9 +239,7 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_role_permissions")),
-        sa.UniqueConstraint(
-            "role_id", "feature", name=op.f("uq_role_permissions_role_id_feature")
-        ),
+        sa.UniqueConstraint("role_id", "feature", name=op.f("uq_role_permissions_role_id_feature")),
     )
     op.create_table(
         "spaces",
@@ -284,9 +260,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.CheckConstraint(
-            "position >= 0", name=op.f("ck_spaces_position_non_negative")
-        ),
+        sa.CheckConstraint("position >= 0", name=op.f("ck_spaces_position_non_negative")),
         sa.ForeignKeyConstraint(
             ["project_id"],
             ["projects.id"],
@@ -294,9 +268,7 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_spaces")),
-        sa.UniqueConstraint(
-            "project_id", "name", name=op.f("uq_spaces_project_id_name")
-        ),
+        sa.UniqueConstraint("project_id", "name", name=op.f("uq_spaces_project_id_name")),
     )
     op.create_table(
         "task_statuses",
@@ -325,9 +297,7 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "color ~ '^#[0-9A-Fa-f]{6}$'", name=op.f("ck_task_statuses_color_format")
         ),
-        sa.CheckConstraint(
-            "position >= 0", name=op.f("ck_task_statuses_position_non_negative")
-        ),
+        sa.CheckConstraint("position >= 0", name=op.f("ck_task_statuses_position_non_negative")),
         sa.ForeignKeyConstraint(
             ["project_id"],
             ["projects.id"],
@@ -401,12 +371,8 @@ def upgrade() -> None:
             postgresql_nulls_not_distinct=True,
         ),
     )
-    op.create_index(
-        op.f("ix_user_roles_project_id"), "user_roles", ["project_id"], unique=False
-    )
-    op.create_index(
-        op.f("ix_user_roles_role_id"), "user_roles", ["role_id"], unique=False
-    )
+    op.create_index(op.f("ix_user_roles_project_id"), "user_roles", ["project_id"], unique=False)
+    op.create_index(op.f("ix_user_roles_role_id"), "user_roles", ["role_id"], unique=False)
     op.create_table(
         "tasks",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
@@ -418,9 +384,7 @@ def upgrade() -> None:
         sa.Column("number", sa.Integer(), nullable=False),
         sa.Column("title", sa.String(length=255), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column(
-            "priority", sa.String(length=20), server_default="medium", nullable=False
-        ),
+        sa.Column("priority", sa.String(length=20), server_default="medium", nullable=False),
         sa.Column("start_date", sa.Date(), nullable=True),
         sa.Column("end_date", sa.Date(), nullable=True),
         sa.Column(
@@ -475,13 +439,9 @@ def upgrade() -> None:
             ondelete="NO ACTION",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_tasks")),
-        sa.UniqueConstraint(
-            "project_id", "number", name=op.f("uq_tasks_project_id_number")
-        ),
+        sa.UniqueConstraint("project_id", "number", name=op.f("uq_tasks_project_id_number")),
     )
-    op.create_index(
-        op.f("ix_tasks_assignee_id"), "tasks", ["assignee_id"], unique=False
-    )
+    op.create_index(op.f("ix_tasks_assignee_id"), "tasks", ["assignee_id"], unique=False)
     op.create_index(op.f("ix_tasks_space_id"), "tasks", ["space_id"], unique=False)
     op.create_index(op.f("ix_tasks_status_id"), "tasks", ["status_id"], unique=False)
     op.create_index(
@@ -516,9 +476,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("team_id", "user_id", name=op.f("pk_team_members")),
     )
-    op.create_index(
-        op.f("ix_team_members_user_id"), "team_members", ["user_id"], unique=False
-    )
+    op.create_index(op.f("ix_team_members_user_id"), "team_members", ["user_id"], unique=False)
     op.create_table(
         "task_comments",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
@@ -567,9 +525,7 @@ def downgrade() -> None:
     something else may use it, and leaving it installed is harmless (the next
     upgrade's CREATE EXTENSION IF NOT EXISTS simply skips it).
     """
-    op.drop_index(
-        op.f("ix_task_comments_task_id_created_at"), table_name="task_comments"
-    )
+    op.drop_index(op.f("ix_task_comments_task_id_created_at"), table_name="task_comments")
     op.drop_table("task_comments")
     op.drop_index(op.f("ix_team_members_user_id"), table_name="team_members")
     op.drop_table("team_members")
@@ -588,17 +544,13 @@ def downgrade() -> None:
     op.drop_table("user_roles")
     op.drop_index(op.f("ix_teams_project_id"), table_name="teams")
     op.drop_table("teams")
-    op.drop_index(
-        op.f("ix_task_statuses_project_id_position"), table_name="task_statuses"
-    )
+    op.drop_index(op.f("ix_task_statuses_project_id_position"), table_name="task_statuses")
     op.drop_table("task_statuses")
     op.drop_table("spaces")
     op.drop_table("role_permissions")
     op.drop_index(op.f("ix_refresh_tokens_user_id"), table_name="refresh_tokens")
     op.drop_table("refresh_tokens")
-    op.drop_index(
-        op.f("ix_password_reset_tokens_user_id"), table_name="password_reset_tokens"
-    )
+    op.drop_index(op.f("ix_password_reset_tokens_user_id"), table_name="password_reset_tokens")
     op.drop_table("password_reset_tokens")
     op.drop_index(op.f("ix_users_organization_id"), table_name="users")
     op.drop_table("users")

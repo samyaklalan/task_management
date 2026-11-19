@@ -26,9 +26,7 @@ class ErrorDetail(BaseModel):
 
 
 class ErrorBody(BaseModel):
-    code: str = Field(
-        description="Stable, machine-readable; the frontend switches on it."
-    )
+    code: str = Field(description="Stable, machine-readable; the frontend switches on it.")
     message: str = Field(description="Human-readable; may change.")
     details: list[ErrorDetail] | dict[str, Any] | None = Field(
         default=None,
