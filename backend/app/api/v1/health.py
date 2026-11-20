@@ -35,9 +35,7 @@ class HealthUnavailable(BaseModel):
     "/health",
     response_model=HealthOk,
     summary="Health check (SYS-1)",
-    responses={
-        503: {"model": HealthUnavailable, "description": "Database unreachable"}
-    },
+    responses={503: {"model": HealthUnavailable, "description": "Database unreachable"}},
 )
 async def health(response: Response) -> HealthOk | Response:
     # Never cached by a proxy: every call must really check the database.
@@ -47,9 +45,7 @@ async def health(response: Response) -> HealthOk | Response:
     with anyio.move_on_after(HEALTH_TIMEOUT_SECONDS) as timeout:
         database_ok = await db_session.ping_database()
     if timeout.cancelled_caught:
-        logger.warning(
-            "Health check: database did not answer within %ss", HEALTH_TIMEOUT_SECONDS
-        )
+        logger.warning("Health check: database did not answer within %ss", HEALTH_TIMEOUT_SECONDS)
 
     if database_ok:
         return HealthOk()

@@ -60,9 +60,7 @@ class RequestIdMiddleware:
 
         incoming = dict(scope["headers"]).get(REQUEST_ID_HEADER.lower().encode(), b"")
         decoded = incoming.decode("latin-1")
-        request_id = (
-            decoded if _VALID_REQUEST_ID.fullmatch(decoded) else new_request_id()
-        )
+        request_id = decoded if _VALID_REQUEST_ID.fullmatch(decoded) else new_request_id()
 
         # request.state.request_id: still readable by the 500 handler, which
         # runs after this middleware has finished (app/core/exceptions.py).
