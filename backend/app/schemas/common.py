@@ -6,13 +6,29 @@
   the handlers really produce this shape.
 * ``Page[T]``: every paginated list, e.g. ``Page[TaskOut]``.
 * ``SortOrder``: the ``order`` query parameter of every sortable list.
+* ``RequestModel``: base class of every request body.
+* ``RoleRef``: a role as other responses show it, ``{"id": 3, "name": "Manager"}``.
 """
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 SortOrder = Literal["asc", "desc"]
+
+
+class RequestModel(BaseModel):
+    """Base of every request body: an unknown field is a 422, not silently ignored,
+    so a typo like ``{"nmae": "x"}`` is reported instead of doing nothing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class RoleRef(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
 
 
 # ── Errors ────────────────────────────────────────────────────────────────────
