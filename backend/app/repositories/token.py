@@ -69,9 +69,7 @@ async def revoke_refresh_token_by_hash(
     )
 
 
-async def revoke_all_refresh_tokens(
-    session: AsyncSession, user_id: int, now: datetime
-) -> int:
+async def revoke_all_refresh_tokens(session: AsyncSession, user_id: int, now: datetime) -> int:
     """Log the user out everywhere (token reuse, password reset, deactivation).
     Returns how many sessions were still active."""
     result = await session.execute(
@@ -88,9 +86,7 @@ async def revoke_all_refresh_tokens(
 async def create_reset_token(
     session: AsyncSession, *, user_id: int, token_hash: str, expires_at: datetime
 ) -> PasswordResetToken:
-    token = PasswordResetToken(
-        user_id=user_id, token_hash=token_hash, expires_at=expires_at
-    )
+    token = PasswordResetToken(user_id=user_id, token_hash=token_hash, expires_at=expires_at)
     session.add(token)
     await session.flush()
     return token
@@ -107,9 +103,7 @@ async def get_reset_token_for_update(
     )
 
 
-async def mark_reset_token_used(
-    session: AsyncSession, token_id: int, now: datetime
-) -> None:
+async def mark_reset_token_used(session: AsyncSession, token_id: int, now: datetime) -> None:
     await session.execute(
         update(PasswordResetToken)
         .where(PasswordResetToken.id == token_id, PasswordResetToken.used_at.is_(None))
@@ -117,9 +111,7 @@ async def mark_reset_token_used(
     )
 
 
-async def invalidate_reset_tokens(
-    session: AsyncSession, user_id: int, now: datetime
-) -> int:
+async def invalidate_reset_tokens(session: AsyncSession, user_id: int, now: datetime) -> int:
     """Before a new link is sent (AUTH-5), older unused links stop working.
 
     They are marked as used (``used_at = now``) rather than deleted, so the
@@ -127,9 +119,7 @@ async def invalidate_reset_tokens(
     """
     result = await session.execute(
         update(PasswordResetToken)
-        .where(
-            PasswordResetToken.user_id == user_id, PasswordResetToken.used_at.is_(None)
-        )
+        .where(PasswordResetToken.user_id == user_id, PasswordResetToken.used_at.is_(None))
         .values(used_at=now)
     )
     return result.rowcount

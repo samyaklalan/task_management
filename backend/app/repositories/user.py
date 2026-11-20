@@ -34,12 +34,7 @@ async def get_by_email_with_password(session: AsyncSession, email: str) -> User 
 
 
 async def create(
-    session: AsyncSession,
-    *,
-    organization_id: int,
-    name: str,
-    email: str,
-    password_hash: str
+    session: AsyncSession, *, organization_id: int, name: str, email: str, password_hash: str
 ) -> User:
     user = User(
         organization_id=organization_id,
@@ -52,9 +47,7 @@ async def create(
     return user
 
 
-async def set_password_hash(
-    session: AsyncSession, user_id: int, password_hash: str
-) -> None:
+async def set_password_hash(session: AsyncSession, user_id: int, password_hash: str) -> None:
     """New password (AUTH-6) or a re-hash with newer settings after login.
 
     One UPDATE, without loading the user; ``updated_at`` changes too.
