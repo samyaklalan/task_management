@@ -209,11 +209,17 @@ def configure_logging(settings: Settings | None = None) -> None:
     )
 
 
-"""logging.py sets up logging for the whole backend. Every log line, whether it comes from your code, Uvicorn or SQLAlchemy, gets three things:
+"""logging.py sets up logging for the whole backend. Every log line, whether it comes from your
+code, Uvicorn or SQLAlchemy, gets three things:
 
-A request ID. Each HTTP request gets a random ID like [aaaa1111bbbb2222], which is printed on every line logged while handling that request. A ContextVar keeps the IDs separate when many requests run at once. The same ID appears in API error responses, so you can match a user's error to its log lines.
+A request ID. Each HTTP request gets a random ID like [aaaa1111bbbb2222], which is printed on every
+line logged while handling that request. A ContextVar keeps the IDs separate when many requests run
+at once. The same ID appears in API error responses, so you can match a user's error to its log
+lines.
 
-Secret hiding. Passwords, tokens, JWTs, Argon2 hashes and database passwords are replaced with [REDACTED] before anything is written, so secrets can't leak into logs by accident. The only exception is the development email sender, which needs to print a working reset link.
+Secret hiding. Passwords, tokens, JWTs, Argon2 hashes and database passwords are replaced with
+[REDACTED] before anything is written, so secrets can't leak into logs by accident. The only
+exception is the development email sender, which needs to print a working reset link.
 
 One format. On your laptop, lines are readable text:
 
@@ -221,6 +227,39 @@ One format. On your laptop, lines are readable text:
 2026-11-17 07:15:05 INFO [aaaa1111bbbb2222] app.auth: login attempt password=[REDACTED]
 In production, each line is one JSON object so log tools can search it. Times are always in UTC.
 
-configure_logging() is called once at startup. It sends everything to the terminal (stdout) with that format, applies LOG_LEVEL from .env, takes over Uvicorn's, SQLAlchemy's and Alembic's own log output so there are no duplicate or unredacted lines, and shows SQL queries only when SQL_ECHO=true.
+configure_logging() is called once at startup. It sends everything to the terminal (stdout) with
+that format, applies LOG_LEVEL from .env, takes over Uvicorn's, SQLAlchemy's and Alembic's own log
+output so there are no duplicate or unredacted lines, and shows SQL queries only when SQL_ECHO=true.
 
-Other files just write logger = logging.getLogger(__name__) and log normally. The request ID, secret hiding and formatting happen automatica"""
+Other files just write logger = logging.getLogger(__name__) and log normally. The request ID, secret
+hiding and formatting happen automatica
+
+
+logging.py sets up logging for the whole backend. Every log line, whether it comes from your code,
+Uvicorn or SQLAlchemy, gets three things:
+
+A request ID. Each HTTP request gets a random ID like [aaaa1111bbbb2222], which is printed on every
+line logged while handling that request. A ContextVar keeps the IDs separate when many requests run
+at once. The same ID appears in API error responses, so you can match a user's error to its log
+lines.
+
+Secret hiding. Passwords, tokens, JWTs, Argon2 hashes and database passwords are replaced with
+[REDACTED] before anything is written, so secrets can't leak into logs by accident. The only
+exception is the development email sender, which needs to print a working reset link.
+
+One format. On your laptop, lines are readable text:
+
+
+2026-11-17 07:15:05 INFO [aaaa1111bbbb2222] app.auth: login attempt password=[REDACTED]
+In production, each line is one JSON object so log tools can search it. Times are always in UTC.
+
+configure_logging() is called once at startup. It sends everything to the terminal (stdout) with
+that format, applies LOG_LEVEL from .env, takes over Uvicorn's, SQLAlchemy's and Alembic's own log
+output so there are no duplicate or unredacted lines, and shows SQL queries only when SQL_ECHO=true.
+
+Other files just write logger = logging.getLogger(__name__) and log normally. The request ID, secret
+hiding and formatting happen automatically.
+
+
+
+"""

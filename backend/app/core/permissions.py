@@ -41,6 +41,24 @@ ORG_FEATURES = {Feature.ORGANIZATION, Feature.USERS, Feature.ROLES}
 ADMIN_ROLE_NAME = "Admin"
 
 
+# is_org_scoped decides which permissions a project role is allowed to grant.
+# Some permissions can only come from the user's organization-wide role.
+#
+# A user can have two kinds of role:
+#   - user_roles.project_id IS NULL     -> organization-level role
+#   - user_roles.project_id IS NOT NULL -> project-level role
+#
+# The problem it solves: some permissions are about the whole organization,
+# not one project:
+#   - organization:    change the org's settings
+#   - users:           invite or remove people
+#   - roles:           create roles and change their permissions
+#   - projects.create: create a new project
+# If a project role could grant these, a manager of one project could gain
+# power over the whole organization (privilege escalation).
+# isorganizationscoped means based on orgnization user role whole crud
+# permission is with the organization level role
+# and project level role will not have any permission for these features
 def is_org_scoped(feature: Feature, action: Action) -> bool:
     """True if only the org-wide role counts for this permission.
 
@@ -53,6 +71,13 @@ def is_org_scoped(feature: Feature, action: Action) -> bool:
     )
 
 
+# admin_permission_rows is used only once, at sign-up, and only for the Admin role
+# (app/services/auth.py: register). It is NOT a default for every role:
+#   - the Admin role created at sign-up gets every action on every feature (all True),
+#     so the first user can manage the new organization;
+#   - any role created later starts with every action False (the database default in
+#     app/models/role.py) and gets only what an admin allows.
+# It fills role_permissions (what a role can do), not user_roles (who has the role).
 def admin_permission_rows() -> list[dict]:
     """Rows for the Admin role made at sign-up: every action on every feature (5.3).
 
