@@ -5,14 +5,11 @@ import secrets
 import unicodedata
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints, model_validator
+from pydantic import BaseModel, Field, model_validator
 
-from app.models.organization import (
-    ORGANIZATION_NAME_MAX_LENGTH,
-    ORGANIZATION_SLUG_MAX_LENGTH,
-    ORGANIZATION_SLUG_PATTERN,
-)
+from app.models.organization import ORGANIZATION_SLUG_MAX_LENGTH, ORGANIZATION_SLUG_PATTERN
 from app.schemas.common import RequestModel
+from app.schemas.organization import OrganizationName
 from app.schemas.user import Email, PersonName, UserSummary
 
 # A-12: 8-128 characters, no rules about symbols or digits. Not trimmed:
@@ -28,10 +25,6 @@ LoginPassword = Annotated[str, Field(min_length=1, max_length=128)]
 # value from being hashed and looked up.
 OpaqueTokenStr = Annotated[str, Field(min_length=1, max_length=128)]
 
-OrganizationName = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=ORGANIZATION_NAME_MAX_LENGTH),
-]
 OrganizationSlug = Annotated[
     str,
     Field(
