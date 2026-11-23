@@ -1,4 +1,4 @@
-"""Sign-up and login (docs/api.md, AUTH-1 and AUTH-2).
+"""Sign-up, login and password reset (docs/api.md, AUTH-1, AUTH-2 and AUTH-5).
 
 Services hold the business rules and decide when the transaction ends
 (``commit``). They raise the errors of app/core/exceptions.py; the routers stay
@@ -6,6 +6,7 @@ thin.
 """
 
 from datetime import UTC, datetime
+from urllib.parse import urlencode
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,8 +28,19 @@ from app.repositories import organization as organization_repository
 from app.repositories import role as role_repository
 from app.repositories import token as token_repository
 from app.repositories import user as user_repository
-from app.schemas.auth import LoginRequest, LoginResponse, RegisterRequest, TokenResponse
+from app.schemas.auth import (
+    LoginRequest,
+    LoginResponse,
+    MessageResponse,
+    PasswordResetRequest,
+    RegisterRequest,
+    TokenResponse,
+)
 from app.schemas.user import UserSummary
+from app.services.email import EmailSender
+
+# AUTH-5: the same answer whether or not the email has an account (docs/api.md).
+RESET_REQUESTED_MESSAGE = "If an account exists for this email, a reset link has been sent."
 
 # Which unique constraint means which field is taken (AUTH-1: 409 conflict).
 _REGISTER_CONFLICTS = {
@@ -98,6 +110,40 @@ async def login(session: AsyncSession, data: LoginRequest) -> LoginResponse:
     tokens = await _issue_tokens(session, user, now)
     await session.commit()
     return LoginResponse(**tokens.model_dump(), user=UserSummary.model_validate(user))
+
+
+async def request_password_reset(
+    session: AsyncSession, data: PasswordResetRequest, email_sender: EmailSender
+) -> MessageResponse:
+    """Send a reset link to an active user. The answer is the same for any email,
+    so this can't be used to find out who has an account."""
+    now = datetime.now(UTC)
+    user = await user_repository.get_by_email(session, data.email)
+
+    if user is not None and user.is_active:
+        link = await create_password_link(session, user.id, now)
+        await session.commit()  # the link must work before it's sent
+        await email_sender.send_password_reset(to=user.email, link=link)
+
+    return MessageResponse(message=RESET_REQUESTED_MESSAGE)
+
+
+async def create_password_link(session: AsyncSession, user_id: int, now: datetime) -> str:
+    """A new single-use link to set a password; older unused links stop working.
+
+    Used for "forgot password" (AUTH-5) and for new users (USR-4). The caller
+    commits, then sends the link.
+    """
+    settings = get_settings()
+    await token_repository.invalidate_reset_tokens(session, user_id, now)
+    token, token_hash = generate_token()
+    await token_repository.create_reset_token(
+        session,
+        user_id=user_id,
+        token_hash=token_hash,
+        expires_at=now + settings.password_reset_token_ttl,
+    )
+    return f"{settings.frontend_base_url}/reset-password?{urlencode({'token': token})}"
 
 
 async def _issue_tokens(session: AsyncSession, user: User, now: datetime) -> TokenResponse:
