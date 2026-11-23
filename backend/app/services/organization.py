@@ -13,6 +13,26 @@ async def get(session: AsyncSession, organization_id: int) -> OrganizationOut:
     return OrganizationOut.model_validate(organization)
 
 
+# vaidating the output with orgabnization schema
+
+# truy ro get the org by id using load function it
+# retiuns organization else raise eror
+
+
+# How update works:
+#   1. values = only the fields the client sent (name and/or description),
+#      without expected_updated_at.
+#   2. Values sent -> update_if_unchanged updates the organization, but only if
+#      updated_at still equals expected_updated_at. Returns the updated
+#      organization, or None (someone else saved first).
+#   3. No values sent -> NOTHING is updated. _load gets the organization:
+#      updated_at == expected_updated_at -> updated = current (unchanged);
+#      otherwise -> updated = None.
+#   4. updated is None -> rollback, load the current organization, raise 409
+#      stale_update with it in details.current.
+#   5. Otherwise -> commit and return the organization (200).
+# It compares the updated_at TIME, not the values: sending the same name again
+# still updates, as long as updated_at matches.
 async def update(
     session: AsyncSession, organization_id: int, data: UpdateOrganizationRequest
 ) -> OrganizationOut:
@@ -23,7 +43,7 @@ async def update(
     """
     # Only the fields the client actually sent ("description": null clears it).
     values = data.model_dump(include=data.model_fields_set - {"expected_updated_at"})
-
+    # or use the exclude undset as true or model.dump
     if values:
         updated = await organization_repository.update_if_unchanged(
             session,
@@ -33,6 +53,7 @@ async def update(
         )
     else:
         # Nothing to change: just confirm the caller's copy is still current.
+        # load to get the orhization first
         current = await _load(session, organization_id)
         updated = current if current.updated_at == data.expected_updated_at else None
 
