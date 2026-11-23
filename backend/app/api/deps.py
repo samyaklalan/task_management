@@ -45,11 +45,7 @@ async def get_current_user(
         raise NotAuthenticatedError()
     claims = decode_access_token(credentials.credentials)  # 401 if invalid or expired
     user = await user_repository.get_by_id(session, claims.user_id)
-    if (
-        user is None
-        or not user.is_active
-        or user.organization_id != claims.organization_id
-    ):
+    if user is None or not user.is_active or user.organization_id != claims.organization_id:
         raise NotAuthenticatedError()
     return user
 

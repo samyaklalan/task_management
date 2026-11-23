@@ -27,9 +27,7 @@ class ConsoleEmailSender:
     """
 
     async def send_password_reset(self, *, to: str, link: str) -> None:
-        logger.info(
-            "Password reset email to %s: %s", to, link, extra={UNREDACTED_ATTR: True}
-        )
+        logger.info("Password reset email to %s: %s", to, link, extra={UNREDACTED_ATTR: True})
 
 
 def get_email_sender() -> EmailSender:

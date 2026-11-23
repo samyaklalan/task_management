@@ -40,9 +40,7 @@ Grants = dict[Feature, set[Action]]
 @dataclass
 class Permissions:
     org_role: RoleRef | None = None  # the user's org-level role, if any
-    project_role: RoleRef | None = (
-        None  # their project-level role in this project, if any
-    )
+    project_role: RoleRef | None = None  # their project-level role in this project, if any
     org_grants: Grants = field(default_factory=lambda: defaultdict(set))
     project_grants: Grants = field(default_factory=lambda: defaultdict(set))
 
@@ -129,9 +127,7 @@ async def load_permissions(
             continue  # a feature this version doesn't know: grants nothing
         grants = permissions.org_grants if is_org_wide else permissions.project_grants
         flags = (row.view_perm, row.create_perm, row.edit_perm, row.delete_perm)
-        grants[feature].update(
-            action for action, on in zip(Action, flags, strict=True) if on
-        )
+        grants[feature].update(action for action, on in zip(Action, flags, strict=True) if on)
     return permissions
 
 
