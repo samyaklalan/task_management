@@ -36,10 +36,29 @@ _ME_FEATURES = (Feature.ORGANIZATION, Feature.USERS, Feature.ROLES, Feature.PROJ
 # ── USR-1 and USR-2: me ───────────────────────────────────────────────────────
 
 
+# How get_me works:
+#   1. permissions is NOT a request body (GET /me has none). It comes from the
+#      OrgPermissionsDep dependency: load_permissions already read the user's
+#      org-level role and what it allows from the database.
+#   2. Load the organization by user.organization_id.
+#   3. For each of the 4 features (_ME_FEATURES) and each action (view, create,
+#      edit, delete): action in permissions.org_grants[feature] -> True if the
+#      role allows it, False if not.
+#   4. Build MeResponse: id, name, email, organization, org_role and these flags.
+# MeResponse is ALWAYS returned; a user with no permissions just gets all False.
 async def get_me(session: AsyncSession, user: User, permissions: Permissions) -> MeResponse:
     """``permissions`` are the user's org-wide permissions, already loaded for
     this request (app/api/deps.py), so no extra query is needed for them."""
     organization = await organization_repository.get_by_id(session, user.organization_id)
+    # flags: a yes/no table, 4 features x 4 actions (view, create, edit, delete).
+    #   - Outer loop: the 4 features in _ME_FEATURES.
+    #   - Inner loop: action in permissions.org_grants[feature] -> True if the
+    #     user's role allows it, False if not.
+    #   - ActionFlags(**{...}): the 4 answers as an object (** = dict keys become
+    #     field names); stored under feature.value, e.g. "users".
+    #   - Example: a role with USERS: {VIEW, CREATE} gives "users": view=True,
+    #     create=True, edit=False, delete=False. Features not in the role: all False.
+    #   - Same as two normal for loops, written as one expression.
     flags = {
         feature.value: ActionFlags(
             **{action.value: action in permissions.org_grants[feature] for action in Action}
@@ -87,10 +106,25 @@ async def list_users(
         order=order,
         page=page,
     )
+    # Each row is (user, role_id, role_name). _user_out runs once per row and the
+    # results become items. Page[T] = items (a list of T, here UserOut) plus
+    # pagination (page, page_size, total_items, ...) from paginate().
     items = [_user_out(user, role_id, role_name) for user, role_id, role_name in rows]
     return Page[UserOut](items=items, pagination=pagination)
 
 
+# How create_user works (USR-4, POST /users: an admin adds a new user):
+#   1. Get the time (now), used for the link's expiry.
+#   2. Hash a RANDOM password (not the user's: the admin never sets it), so the
+#      account can't be used until the user sets their own through the link.
+#   3. user_repository.create(organization_id, name, email, password_hash).
+#      The user gets no role yet (an admin assigns one later, USR-6).
+#   4. IntegrityError -> rollback (on any); duplicate email -> 409, anything
+#      else is raised as is. Insert and catch, never check-then-insert.
+#   5. create_password_link(user.id, now): single-use token, expires in 30 minutes.
+#   6. Commit FIRST, then send_invitation(user.email, link), so the link works
+#      before it's sent.
+#   7. Return one UserOut with org_role: null (status 201).
 async def create_user(
     session: AsyncSession,
     organization_id: int,
@@ -123,9 +157,20 @@ async def create_user(
     link = await create_password_link(session, user.id, now)
     await session.commit()  # the link must work before it's sent
     await email_sender.send_invitation(to=user.email, link=link)
+    # A single UserOut, not a Page. The new user has no role yet -> org_role: null.
     return _user_out(user, None, None)
 
 
+# _user_out builds ONE UserOut (the response for one user) from a User plus their role:
+#   - copies the safe fields: id, name, email, is_active, created_at, updated_at
+#     (never password_hash);
+#   - org_role: RoleRef(id, name), e.g. {"id": 1, "name": "Admin"}, or None (null)
+#     when there is no role.
+# Needed because the role isn't part of the User model, so
+# UserOut.model_validate(user) couldn't fill org_role; the role comes from the
+# query's Role.id and Role.name columns.
+# Used by list_users (once per row -> Page[UserOut]) and create_user (one UserOut,
+# role None). The _ means it's private to this file.
 def _user_out(user: User, role_id: int | None, role_name: str | None) -> UserOut:
     return UserOut(
         id=user.id,

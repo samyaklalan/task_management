@@ -32,6 +32,11 @@ class ConsoleEmailSender:
     async def send_password_reset(self, *, to: str, link: str) -> None:
         logger.info("Password reset email to %s: %s", to, link, extra={UNREDACTED_ATTR: True})
 
+    # Normally the logger (core/logging.py) HIDES secrets like tokens: they become
+    # [REDACTED]. extra={UNREDACTED_ATTR: True} marks this one line as "don't hide",
+    # so the token in the link stays readable and you can copy the link from the log.
+    # Without it you'd see ...?token=[REDACTED], a link you can't open.
+    # Development only: config.py refuses the console sender in production.
     async def send_invitation(self, *, to: str, link: str) -> None:
         logger.info("Invitation email to %s: %s", to, link, extra={UNREDACTED_ATTR: True})
 
