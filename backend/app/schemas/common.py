@@ -10,11 +10,21 @@
 * ``RoleRef``: a role as other responses show it, ``{"id": 3, "name": "Manager"}``.
 """
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 SortOrder = Literal["asc", "desc"]
+
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
+
+# Shared by organizations, projects, teams…: max 2000 characters, blank → null.
+DESCRIPTION_MAX_LENGTH = 2000
+Description = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, max_length=DESCRIPTION_MAX_LENGTH),
+    AfterValidator(lambda text: text or None),
+]
 
 
 class RequestModel(BaseModel):
@@ -24,12 +34,21 @@ class RequestModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# Yes. extra="forbid" means the client cannot send
+#  extra fields. Any field the schema doesn't declare causes a 422 error.
+
+
 class RoleRef(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
 
+
+# RoleRef = {"id": 3, "name": "Manager"}
+
+# It tells you which role a user has (id and name only), not what the role can do.
+# It keeps API responses small and gives every role the same shape.
 
 # ── Errors ────────────────────────────────────────────────────────────────────
 
@@ -42,7 +61,9 @@ class ErrorDetail(BaseModel):
 
 
 class ErrorBody(BaseModel):
-    code: str = Field(description="Stable, machine-readable; the frontend switches on it.")
+    code: str = Field(
+        description="Stable, machine-readable; the frontend switches on it."
+    )
     message: str = Field(description="Human-readable; may change.")
     details: list[ErrorDetail] | dict[str, Any] | None = Field(
         default=None,

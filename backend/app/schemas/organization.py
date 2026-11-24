@@ -12,17 +12,13 @@ from pydantic import (
 )
 
 from app.models.organization import ORGANIZATION_NAME_MAX_LENGTH
-from app.schemas.common import RequestModel
+from app.schemas.common import Description, RequestModel
 
 OrganizationName = Annotated[
     str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=ORGANIZATION_NAME_MAX_LENGTH),
-]
-
-# Free text. Blank ("" or only spaces) is stored as "no description" (null).
-DESCRIPTION_MAX_LENGTH = 2000
-Description = Annotated[
-    str, StringConstraints(strip_whitespace=True, max_length=DESCRIPTION_MAX_LENGTH)
+    StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=ORGANIZATION_NAME_MAX_LENGTH
+    ),
 ]
 
 
@@ -53,11 +49,6 @@ class UpdateOrganizationRequest(RequestModel):
         if value is None:
             raise ValueError("may be left out, but not set to null")
         return value
-
-    @field_validator("description")
-    @classmethod
-    def _blank_is_none(cls, value: str | None) -> str | None:
-        return value or None
 
 
 # Summary:
