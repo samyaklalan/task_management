@@ -16,9 +16,7 @@ from app.schemas.common import Description, RequestModel
 
 OrganizationName = Annotated[
     str,
-    StringConstraints(
-        strip_whitespace=True, min_length=1, max_length=ORGANIZATION_NAME_MAX_LENGTH
-    ),
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=ORGANIZATION_NAME_MAX_LENGTH),
 ]
 
 

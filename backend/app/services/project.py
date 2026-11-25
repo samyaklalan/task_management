@@ -54,9 +54,7 @@ _PUBLIC_ID_ATTEMPTS = 3
 
 
 def new_public_id() -> str:
-    return "".join(
-        secrets.choice(_PUBLIC_ID_ALPHABET) for _ in range(_PUBLIC_ID_LENGTH)
-    )
+    return "".join(secrets.choice(_PUBLIC_ID_ALPHABET) for _ in range(_PUBLIC_ID_LENGTH))
 
 
 # ── PRJ-1 create ──────────────────────────────────────────────────────────────
@@ -195,9 +193,7 @@ async def update_project(
             current = await _reload(session, project_id)
             if current.status == ProjectStatus.ARCHIVED:
                 raise ProjectArchivedError()
-            raise StaleUpdateError(
-                current=await _current(session, current, permissions)
-            )
+            raise StaleUpdateError(current=await _current(session, current, permissions))
         project = updated
         await session.commit()
 
@@ -213,9 +209,7 @@ async def set_archived(
     """Archive (read-only, A-9) or restore to ``active``. Doing it twice is a
     harmless 200 with no change (the repeated click, or two people at once)."""
     project_id = project.id
-    changed = await project_repository.set_archived(
-        session, project_id, archived=archived
-    )
+    changed = await project_repository.set_archived(session, project_id, archived=archived)
     await session.commit()
     # Unchanged: another request may have just done it, so show the stored row.
     project = changed or await _reload(session, project_id)
@@ -232,9 +226,7 @@ async def _reload(session: AsyncSession, project_id: int) -> Project:
     return project
 
 
-async def _current(
-    session: AsyncSession, project: Project, permissions: Permissions
-) -> dict:
+async def _current(session: AsyncSession, project: Project, permissions: Permissions) -> dict:
     """The project as PRJ-3 shows it, for ``details.current`` of a 409."""
     return (await _with_counts(session, project, permissions)).model_dump(mode="json")
 
@@ -246,9 +238,7 @@ async def _with_counts(
     return _detail(project, counts, permissions)
 
 
-def _detail(
-    project: Project, counts: dict[str, int], permissions: Permissions
-) -> ProjectDetail:
+def _detail(project: Project, counts: dict[str, int], permissions: Permissions) -> ProjectDetail:
     return ProjectDetail(
         public_id=project.public_id,
         name=project.name,
@@ -262,10 +252,7 @@ def _detail(
         task_counts=TaskCounts(**counts, total=sum(counts.values())),
         my_permissions={
             feature.value: ActionFlags(
-                **{
-                    action.value: permissions.allows(feature, action)
-                    for action in Action
-                }
+                **{action.value: permissions.allows(feature, action) for action in Action}
             )
             for feature in _PROJECT_FEATURES
         },

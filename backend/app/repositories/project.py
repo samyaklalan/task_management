@@ -89,9 +89,7 @@ async def update_if_unchanged(
     )
 
 
-async def set_archived(
-    session: AsyncSession, project_id: int, *, archived: bool
-) -> Project | None:
+async def set_archived(session: AsyncSession, project_id: int, *, archived: bool) -> Project | None:
     """PRJ-5 (``archived=True``) and PRJ-6 (back to ``active``).
 
     Only changes a project that isn't already in the target state; ``None``
@@ -136,9 +134,7 @@ async def list_visible(
     only projects where their project role grants it (a subquery, so the whole
     list is still one query plus the count).
     """
-    statement: Select[Any] = select(Project).where(
-        Project.organization_id == organization_id
-    )
+    statement: Select[Any] = select(Project).where(Project.organization_id == organization_id)
 
     if not sees_all:
         my_projects = (

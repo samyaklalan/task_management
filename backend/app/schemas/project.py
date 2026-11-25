@@ -24,17 +24,13 @@ from app.schemas.user import ActionFlags
 
 ProjectName = Annotated[
     str,
-    StringConstraints(
-        strip_whitespace=True, min_length=1, max_length=PROJECT_NAME_MAX_LENGTH
-    ),
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=PROJECT_NAME_MAX_LENGTH),
 ]
 
 
 def _check_prefix(prefix: str) -> str:
     if not re.fullmatch(TASK_PREFIX_PATTERN, prefix):
-        raise ValueError(
-            "2-10 letters or digits, starting with a letter (e.g. WEB, APP2)"
-        )
+        raise ValueError("2-10 letters or digits, starting with a letter (e.g. WEB, APP2)")
     return prefix
 
 

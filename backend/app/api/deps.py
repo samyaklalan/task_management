@@ -71,11 +71,7 @@ async def get_current_user(
         raise NotAuthenticatedError()
     claims = decode_access_token(credentials.credentials)  # 401 if invalid or expired
     user = await user_repository.get_by_id(session, claims.user_id)
-    if (
-        user is None
-        or not user.is_active
-        or user.organization_id != claims.organization_id
-    ):
+    if user is None or not user.is_active or user.organization_id != claims.organization_id:
         raise NotAuthenticatedError()
     return user
 
@@ -142,9 +138,7 @@ async def get_project_context(
     """404 unless the project is in the caller's organization AND they have an
     org-wide role or a role in this project (A-5, rule 3). Another tenant's
     project, a made-up id and a project you can't access all look the same."""
-    project = await project_repository.get_by_public_id(
-        session, user.organization_id, public_id
-    )
+    project = await project_repository.get_by_public_id(session, user.organization_id, public_id)
     # user.orgnization id is the user whioch is logged
     # in it uses cget_cuurnetnt_user dependency for that
     # you can see user is the currentuserdepen and which give
@@ -200,9 +194,22 @@ def require_project_permission(
     """
     if allowed_when_archived is None:
         allowed_when_archived = action is Action.VIEW
+    return _project_guard(((feature, action),), allowed_when_archived=allowed_when_archived)
 
+
+def require_any_project_permission(*grants: tuple[Feature, Action]) -> params.Depends:
+    """Like require_project_permission for reads that one of several
+    permissions allows, e.g. MEM-1: ``members.view`` OR ``tasks.view``."""
+    return _project_guard(
+        grants, allowed_when_archived=all(action is Action.VIEW for _, action in grants)
+    )
+
+
+def _project_guard(
+    grants: tuple[tuple[Feature, Action], ...], *, allowed_when_archived: bool
+) -> params.Depends:
     async def check(context: ProjectContextDep) -> ProjectContext:
-        if not context.permissions.allows(feature, action):
+        if not any(context.permissions.allows(feature, action) for feature, action in grants):
             raise PermissionDeniedError()
         if context.is_archived and not allowed_when_archived:
             raise ProjectArchivedError()

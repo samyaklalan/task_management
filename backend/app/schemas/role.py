@@ -1,4 +1,25 @@
-"""Request and response shapes for roles (docs/api.md, ROLE-1 to ROLE-4)."""
+"""Request and response shapes for roles (docs/api.md, ROLE-1 to ROLE-4).
+
+Validation only, no database logic.
+
+- RoleName: string, spaces stripped, length 1..ROLE_NAME_MAX_LENGTH (from the model file).
+- FeaturePermissions: one feature + 4 switches (view/create/edit/delete). A missing switch is
+  false; an unknown feature or switch is a 422.
+- PermissionList: list of FeaturePermissions, at most 10 (one per feature).
+- _no_duplicate_features: the same feature listed twice is a 422.
+- RoleOut: id, name, assigned_count, permissions (always all 10 features), created_at,
+  updated_at.
+- RoleListResponse: {"items": [RoleOut, ...]}, not paginated.
+- CreateRoleRequest: name required; permissions default [] (features not listed are off);
+  no duplicates.
+- UpdateRoleRequest:
+  - name / permissions are optional: left out = skipped, sent as null = 422.
+  - permissions, if sent, REPLACES the whole list: features not listed are switched off.
+  - expected_updated_at must include a timezone; if someone saved in between = 409
+    stale_update.
+- extra="forbid" (RequestModel, FeaturePermissions): an unknown field is a 422, never
+  silently ignored.
+"""
 
 from datetime import datetime
 from typing import Annotated

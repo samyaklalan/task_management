@@ -47,8 +47,18 @@ class RoleRef(BaseModel):
 
 # RoleRef = {"id": 3, "name": "Manager"}
 
+
 # It tells you which role a user has (id and name only), not what the role can do.
 # It keeps API responses small and gives every role the same shape.
+class UserRef(BaseModel):
+    """A user as other items show them (member lists, assignees): id and name
+    only. Emails are only listed by USR-3, for callers with ``users.view``."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
 
 # ── Errors ────────────────────────────────────────────────────────────────────
 
@@ -61,9 +71,7 @@ class ErrorDetail(BaseModel):
 
 
 class ErrorBody(BaseModel):
-    code: str = Field(
-        description="Stable, machine-readable; the frontend switches on it."
-    )
+    code: str = Field(description="Stable, machine-readable; the frontend switches on it.")
     message: str = Field(description="Human-readable; may change.")
     details: list[ErrorDetail] | dict[str, Any] | None = Field(
         default=None,

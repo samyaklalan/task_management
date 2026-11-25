@@ -70,9 +70,7 @@ async def create_project(
     user: CurrentUserDep,
     permissions: OrgPermissionsDep,
 ) -> ProjectDetail:
-    return await project_service.create_project(
-        session, user.organization_id, body, permissions
-    )
+    return await project_service.create_project(session, user.organization_id, body, permissions)
 
 
 # How create_project works (PRJ-1): router -> service -> repositories
@@ -186,9 +184,7 @@ async def list_projects(
     responses={404: {"model": ErrorResponse}},
 )
 async def get_project(session: SessionDep, project: ProjectContextDep) -> ProjectDetail:
-    return await project_service.get_project(
-        session, project.project, project.permissions
-    )
+    return await project_service.get_project(session, project.project, project.permissions)
 
 
 # How get_project works (PRJ-3), in easy words
@@ -250,13 +246,9 @@ async def get_project(session: SessionDep, project: ProjectContextDep) -> Projec
 async def update_project(
     body: UpdateProjectRequest,
     session: SessionDep,
-    project: Annotated[
-        ProjectContext, require_project_permission(Feature.PROJECTS, Action.EDIT)
-    ],
+    project: Annotated[ProjectContext, require_project_permission(Feature.PROJECTS, Action.EDIT)],
 ) -> ProjectDetail:
-    return await project_service.update_project(
-        session, project.project, project.permissions, body
-    )
+    return await project_service.update_project(session, project.project, project.permissions, body)
 
 
 # Both need projects.delete and both work on an archived project: archiving it

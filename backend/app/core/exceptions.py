@@ -219,6 +219,19 @@ class InvalidReferenceError(AppError):
         super().__init__(text, details=[{"field": field, "message": text}])
 
 
+class FieldValidationError(AppError):
+    """A 422 found by the service, not by Pydantic, because it needs the stored row
+    (e.g. a PATCH sends only ``end_date``, and it is before the saved
+    ``start_date``). Same shape as a Pydantic validation error."""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "validation_error"
+    message = "Request validation failed."
+
+    def __init__(self, field: str, message: str) -> None:
+        super().__init__(details=[{"field": field, "message": message}])
+
+
 # ── Response building ─────────────────────────────────────────────────────────
 
 
