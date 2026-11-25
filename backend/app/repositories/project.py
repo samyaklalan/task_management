@@ -56,6 +56,26 @@ async def get_by_public_id(
     )
 
 
+async def lock_for_child_write(session: AsyncSession, project_id: int) -> ProjectStatus:
+    """``FOR KEY SHARE`` on the project row, for the rest of the transaction, and
+    its status as of now (A-9).
+
+    Many writes in one project can hold it at once (and still update the row,
+    e.g. the task counter), but archiving takes ``FOR UPDATE`` (lock_for_archive),
+    which waits for them, and they wait for an archive in progress. So a write
+    can never land in a project that was archived after its check.
+    """
+    status = await session.scalar(
+        select(Project.status).where(Project.id == project_id).with_for_update(key_share=True)
+    )
+    return ProjectStatus(status)
+
+
+async def lock_for_archive(session: AsyncSession, project_id: int) -> None:
+    """``FOR UPDATE``: wait for in-flight writes in the project (see above)."""
+    await session.execute(select(Project.id).where(Project.id == project_id).with_for_update())
+
+
 # org id is coming from user who is logged in and
 # its uses get_cuurent_user dependency
 

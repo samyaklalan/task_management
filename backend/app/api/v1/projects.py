@@ -156,8 +156,8 @@ async def list_projects(
 #     database row, never from the client.
 #   - permissions (OrgPermissionsDep): NOT a guard here (no 403). The service uses it
 #     to decide WHICH projects you see:
-#       org-level role that can see projects -> all projects of the organization
-#       otherwise                             -> only projects where you have a role
+#       org-level role grants projects.view -> all projects of the organization
+#       otherwise -> only projects where your PROJECT role grants projects.view
 #   - page (PageQuery): page number and page size (pagination).
 #   - q (SearchQuery): text search, at least 3 characters.
 #   - status (ProjectStatusFilter, a Literal): show only one status.
@@ -199,7 +199,9 @@ async def get_project(session: SessionDep, project: ProjectContextDep) -> Projec
 #    - no project in your organization, or no role -> 404
 #    The route gets the project AND the permissions from it; nothing is loaded twice.
 #
-# 2. project_service.get_project builds ProjectDetail:
+# 2. project_service.get_project FIRST checks permissions.allows(PROJECTS, VIEW):
+#    without projects.view -> 404 too (the project "doesn't exist" for you, same as
+#    PRJ-2 not listing it). Then it builds ProjectDetail:
 #    - all project fields (public_id, name, status, description, dates, ...)
 #    - my_permissions: for each project-level feature, for each action,
 #      permissions.allows(feature, action) -> {"tasks": {"view": true, ...}, ...}
@@ -219,15 +221,17 @@ async def get_project(session: SessionDep, project: ProjectContextDep) -> Projec
 #   | false -> 404 (seems not to exist) | false -> 403 (exists, not allowed)    |
 #   Like a building: the key card gets you IN (404 without it); which ROOMS it opens
 #   is the view permission (403).
-#   This route checks ONLY "can see": no require_project_permission, so even a role
-#   with no permissions can open the page (my_permissions then all false).
+#   This route needs "can see" (dependency) AND projects.view (service); BOTH
+#   failures are 404, never 403, so the project's existence isn't revealed.
 #   Routes inside the project (e.g. list tasks) add
 #   require_project_permission(TASKS, VIEW) -> 403 without tasks.view.
 #
-#   Example, user with an empty role in project A:
-#     GET /projects/A        -> 200, my_permissions all false
+#   Example, role in project A with projects.view but no tasks.view:
+#     GET /projects/A        -> 200
 #     GET /projects/A/tasks  -> 403 (no tasks.view)
-#   User with no role in project A:
+#   Role in project A WITHOUT projects.view (e.g. an empty role):
+#     GET /projects/A        -> 404
+#   No role in project A:
 #     GET /projects/A        -> 404
 
 

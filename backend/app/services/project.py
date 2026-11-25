@@ -209,6 +209,9 @@ async def set_archived(
     """Archive (read-only, A-9) or restore to ``active``. Doing it twice is a
     harmless 200 with no change (the repeated click, or two people at once)."""
     project_id = project.id
+    # Wait for writes already running in this project (tasks, teams…), so none
+    # of them lands after the archive (A-9, see lock_for_child_write).
+    await project_repository.lock_for_archive(session, project_id)
     changed = await project_repository.set_archived(session, project_id, archived=archived)
     await session.commit()
     # Unchanged: another request may have just done it, so show the stored row.

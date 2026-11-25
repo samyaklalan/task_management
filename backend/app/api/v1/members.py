@@ -11,6 +11,8 @@ from app.api.deps import (
     SessionDep,
     require_any_project_permission,
     require_project_permission,
+    # can you see project does ur role allow meber.create
+    # istt a change in archived projects
 )
 from app.core.permissions import Action, Feature
 from app.schemas.common import ErrorResponse, IdPath, Page
@@ -18,6 +20,17 @@ from app.schemas.member import AddMemberRequest, ChangeMemberRoleRequest, Member
 from app.services import member as member_service
 from app.utils.pagination import PageQuery
 from app.utils.search import SearchQuery
+
+# What get_project_context (app/api/deps.py) does, in short:
+# 1. Takes public_id from the URL and the logged-in user.
+# 2. Finds the project in YOUR organization -> not found = 404.
+# 3. load_permissions loads your org-level role + your role in this project.
+# 4. can_see_project: you need EITHER role -> neither = 404.
+# 5. Returns ProjectContext(project, permissions) to the route.
+# In one line: "Is this project in my organization, and do I have an org-level or
+# project role? If yes, give me the project and my permissions; if not, 404."
+# Every member route below uses it through require_project_permission /
+# require_any_project_permission (which then add 403 / 409).
 
 router = APIRouter(prefix="/projects/{public_id}/members", tags=["members"])
 
@@ -34,6 +47,9 @@ async def list_members(
             (Feature.MEMBERS, Action.VIEW), (Feature.TASKS, Action.VIEW)
         ),
     ],
+    # Do you belong to this project? (project in your org,
+    # and you have an org-level role or a role in this project)
+    # requirerole depe:Are you allowed this action? (members.view OR tasks.view)
     page: PageQuery,
     q: SearchQuery,
 ) -> Page[MemberOut]:

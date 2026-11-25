@@ -19,6 +19,13 @@ _UNKNOWN_USER = "This user doesn't exist in your organization or is deactivated.
 
 # ── MEM-1 list ────────────────────────────────────────────────────────────────
 
+# get_context checks does project belong tonyiu and ur iole
+#  is allowed tosee it or not nad then load all the permiisons
+# you having and return prohect objct based
+# likeget_curent use token and return the logged in
+# user here it take and return project
+# so we can get org and id of project
+
 
 async def list_members(
     session: AsyncSession, project: Project, *, q: str | None, page: PageParams
