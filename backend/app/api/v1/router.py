@@ -13,6 +13,7 @@ from app.api.v1 import (
     organization,
     projects,
     roles,
+    spaces,
     teams,
     users,
 )
@@ -27,3 +28,4 @@ api_router.include_router(roles.router)
 api_router.include_router(projects.router)
 api_router.include_router(members.router)
 api_router.include_router(teams.router)
+api_router.include_router(spaces.router)
