@@ -6,7 +6,16 @@ Each feature adds its router here as it is built, e.g.
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, health, members, organization, projects, roles, users
+from app.api.v1 import (
+    auth,
+    health,
+    members,
+    organization,
+    projects,
+    roles,
+    teams,
+    users,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -17,3 +26,4 @@ api_router.include_router(roles.router)
 
 api_router.include_router(projects.router)
 api_router.include_router(members.router)
+api_router.include_router(teams.router)
