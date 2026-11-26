@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | `docs/api.md` |
-| Version | Draft v1 (16 Nov 2026) |
+| Version | v2 (17 Nov 2026): adds spaces (SPC-1 to SPC-5, TSK-9) and `space_id` on tasks; matches the approved `docs/database.md` v2 |
 | Depends on | `docs/database.md` (D1) |
 | Base URL | `/api/v1` |
 | Status | Endpoints final for implementation. Items marked **A-n** are behaviour proposals awaiting mentor approval (section 13). |
@@ -23,7 +23,7 @@ This document is the contract between the backend and the frontend. The Pydantic
 | Dates | `YYYY-MM-DD`, e.g. `"2026-12-01"` |
 | Partial updates | `PATCH` changes only the fields sent. Sending `null` clears a nullable field; leaving a field out keeps it unchanged. |
 | Status codes | `200` read/update, `201` created, `204` deleted or no content, `4xx` client error (section 3) |
-| Identifiers in URLs | Projects use `public_id` (random, not guessable). Tasks use their per-project `number`. Teams, statuses, comments, roles and users use their numeric `id`. Every lookup is scoped by organization, project and permission, so changing a number in the URL never reveals another tenant's data. |
+| Identifiers in URLs | Projects use `public_id` (random, not guessable). Tasks use their per-project `number`. Teams, spaces, statuses, comments, roles and users use their numeric `id`. Every lookup is scoped by organization, project and permission, so changing a number in the URL never reveals another tenant's data. |
 | Hidden fields | Never returned anywhere: `password_hash`, `token_hash`, internal `projects.id`, `next_task_number` |
 
 ---
@@ -86,7 +86,8 @@ Every error has the same shape:
 | 401 | `token_reused` | Revoked refresh token replayed (section 2.2) |
 | 403 | `permission_denied` | User can see the resource but lacks the action permission |
 | 404 | `not_found` | Resource doesn't exist, belongs to another organization, or the user has no access to its project |
-| 409 | `conflict` | Unique rule violated (details name the field), e.g. email, slug or task prefix already used |
+| 405 | `method_not_allowed` | The URL exists but not for this HTTP method, e.g. `DELETE` on a space (spaces are never deleted, S-4) |
+| 409 | `conflict` | Unique rule violated (details name the field), e.g. email, slug, task prefix or space name already used |
 | 409 | `stale_update` | `expected_updated_at` doesn't match: someone else saved first (section 6) |
 | 409 | `project_archived` | Write attempted on an archived project |
 | 409 | `status_in_use` | Deleting a status that tasks still use, without `move_to` |
@@ -97,7 +98,7 @@ Every error has the same shape:
 | 409 | `self_lockout` | Action would remove your own admin access (A-13) |
 | 422 | `validation_error` | Body or query parameters fail validation |
 | 422 | `search_too_short` | `q` has 1 or 2 characters (minimum 3) |
-| 422 | `invalid_reference` | A referenced id is not usable here (status from another project, assignee without project access, role from another organization) |
+| 422 | `invalid_reference` | A referenced id is not usable here (status or space from another project, assignee without project access, role from another organization) |
 | 500 | `internal_error` | Unexpected server error; details only in logs |
 
 **404 before 403.** If a user has no role at all on a project, every request under that project answers `404 not_found`, never `403`. Otherwise anyone could discover which project ids exist by probing URLs. `403` is used only when the user can view the project but lacks a specific action permission, for example a viewer trying to delete a task.
@@ -161,6 +162,7 @@ A `page` beyond the last page returns an empty `items` array with correct metada
 | `projects` | Both | `create` and "see all projects" need an org-wide role; view/edit/delete apply per project |
 | `members` | Project | Who has which role in a project |
 | `teams` | Project | Teams and team membership |
+| `spaces` | Project | Spaces inside a project (A-14, S-6). Uses view/create/edit; `delete` is unused because spaces are never deleted (S-4). Moving a task between spaces is a task edit (`tasks.edit`). |
 | `task_statuses` | Project | Workflow statuses |
 | `tasks` | Project | Tasks |
 | `comments` | Project | Task comments (with author rules, A-6) |
@@ -174,7 +176,7 @@ A `page` beyond the last page returns an empty `items` array with correct metada
 
 ### 5.3 Default Admin role
 
-`POST /auth/register` creates a role named `Admin` with all four actions on all nine features, and assigns it org-wide to the registering user (A-2). Every other role is created by admins.
+`POST /auth/register` creates a role named `Admin` with all four actions on all ten features, and assigns it org-wide to the registering user (A-2). Every other role is created by admins.
 
 ---
 
@@ -182,7 +184,7 @@ A `page` beyond the last page returns an empty `items` array with correct metada
 
 | Situation | Behaviour |
 |---|---|
-| Two users edit the same task, project, team, status or comment | Edit requests send `expected_updated_at`, the `updated_at` value the client loaded. The update runs `WHERE id = … AND updated_at = :expected` and, if no row matched, returns `409 stale_update` with the current version in `error.details`, so the UI can show "This was changed by someone else" and reload (P-11). |
+| Two users edit the same task, project, team, space, status or comment | Edit requests send `expected_updated_at`, the `updated_at` value the client loaded. The update runs `WHERE id = … AND updated_at = :expected` and, if no row matched, returns `409 stale_update` with the current version in `error.details`, so the UI can show "This was changed by someone else" and reload (P-11). |
 | Single-field task actions (status, assignee, priority) | `expected_updated_at` is optional. Without it, the last write wins. That's acceptable for one-field changes like dragging a card. |
 | Two users create tasks in the same project at once | Both succeed with different numbers. The atomic `UPDATE projects SET next_task_number = next_task_number + 1 … RETURNING` serializes them on the project row, and `uq_tasks_project_id_number` is the final guard. |
 | Create Task clicked three times quickly | Three requests are three legitimate tasks. The frontend prevents this by disabling the button while a request is pending. No idempotency keys in the POC (D1, section 9). |
@@ -190,7 +192,7 @@ A `page` beyond the last page returns an empty `items` array with correct metada
 | Add the same project member twice | The second request gets `409 already_member` (unique `(user_id, project_id)`, P-6) |
 | Same thing created twice where a unique rule exists (email, slug, task prefix) | The second request gets `409 conflict`. The unique constraint decides, not a check-then-insert race. |
 | Delete the same thing twice | The second request gets `404` |
-| Lock order inside transactions | Always project row → status rows (ascending id) → task rows (ascending id). Using one fixed order prevents deadlocks. |
+| Lock order inside transactions | Always project row → space rows (ascending id) → status rows (ascending id) → task rows (ascending id). Using one fixed order prevents deadlocks. |
 | Deadlock or serialization failure anyway | Retried up to 3 times with jittered backoff (`app/db/transaction.py`, B44). Only for operations that are safe to repeat. |
 
 ---
@@ -219,7 +221,7 @@ A `page` beyond the last page returns an empty `items` array with correct metada
 | ROLE-2 | POST | `/roles` | Create role with permissions |
 | ROLE-3 | PATCH | `/roles/{role_id}` | Rename role and/or replace permissions |
 | ROLE-4 | DELETE | `/roles/{role_id}` | Delete an unassigned role |
-| PRJ-1 | POST | `/projects` | Create project (+ default statuses) |
+| PRJ-1 | POST | `/projects` | Create project (+ default statuses and "General" space) |
 | PRJ-2 | GET | `/projects` | List accessible projects |
 | PRJ-3 | GET | `/projects/{public_id}` | Project details, task counts, my permissions |
 | PRJ-4 | PATCH | `/projects/{public_id}` | Update project |
@@ -237,6 +239,11 @@ A `page` beyond the last page returns an empty `items` array with correct metada
 | TEAM-6 | GET | `/projects/{public_id}/teams/{team_id}/members` | List team members |
 | TEAM-7 | POST | `/projects/{public_id}/teams/{team_id}/members` | Add team members |
 | TEAM-8 | DELETE | `/projects/{public_id}/teams/{team_id}/members/{user_id}` | Remove team member |
+| SPC-1 | GET | `/projects/{public_id}/spaces` | List spaces in display order (paginated, with task counts) |
+| SPC-2 | POST | `/projects/{public_id}/spaces` | Create space |
+| SPC-3 | GET | `/projects/{public_id}/spaces/{space_id}` | Space details |
+| SPC-4 | PATCH | `/projects/{public_id}/spaces/{space_id}` | Rename space or change its description |
+| SPC-5 | PUT | `/projects/{public_id}/spaces/order` | Reorder spaces |
 | STS-1 | GET | `/projects/{public_id}/statuses` | List statuses in board order |
 | STS-2 | POST | `/projects/{public_id}/statuses` | Create status |
 | STS-3 | PATCH | `/projects/{public_id}/statuses/{status_id}` | Rename, recolour or recategorize |
@@ -250,6 +257,7 @@ A `page` beyond the last page returns an empty `items` array with correct metada
 | TSK-6 | PATCH | `/projects/{public_id}/tasks/{number}/assignee` | Assign or unassign |
 | TSK-7 | PATCH | `/projects/{public_id}/tasks/{number}/priority` | Change priority |
 | TSK-8 | DELETE | `/projects/{public_id}/tasks/{number}` | Delete task |
+| TSK-9 | PATCH | `/projects/{public_id}/tasks/{number}/space` | Move task to another space |
 | CMT-1 | GET | `/projects/{public_id}/tasks/{number}/comments` | List comments |
 | CMT-2 | POST | `/projects/{public_id}/tasks/{number}/comments` | Add comment |
 | CMT-3 | PATCH | `/projects/{public_id}/tasks/{number}/comments/{comment_id}` | Edit own comment |
@@ -635,7 +643,7 @@ Response `200`:
 }
 ```
 
-Features with no row are returned with all four values `false`, so every role always lists all nine features. The JSON keys `view` / `create` / `edit` / `delete` map to the columns `view_perm` / `create_perm` / `edit_perm` / `delete_perm`.
+Features with no row are returned with all four values `false`, so every role always lists all ten features. The JSON keys `view` / `create` / `edit` / `delete` map to the columns `view_perm` / `create_perm` / `edit_perm` / `delete_perm`.
 
 ### ROLE-2 `POST /roles`
 
@@ -705,10 +713,10 @@ Response: `204 No Content`.
 
 | | |
 |---|---|
-| Purpose | Create a project with a generated `public_id`, `next_task_number = 1`, and three default statuses (A-1), in one transaction |
+| Purpose | Create a project with a generated `public_id`, `next_task_number = 1`, three default statuses (A-1) and a default "General" space (A-15), in one transaction |
 | Auth | Required |
 | Permission | `projects.create` (org-wide) |
-| Tables | projects, task_statuses |
+| Tables | projects, task_statuses, spaces |
 | Errors | Common, `403`, `409 conflict` (`task_prefix` already used in this organization) |
 
 Request:
@@ -726,6 +734,8 @@ Request:
 `task_prefix` is uppercased and must match `^[A-Z][A-Z0-9]{1,9}$` (P-5). `status` starts as `active`.
 
 Default statuses: `To Do` (`todo`, `#64748B`, position 0), `In Progress` (`in_progress`, `#3B82F6`, position 1), `Done` (`done`, `#22C55E`, position 2).
+
+Default space: `General` (position 0, no description).
 
 Response `201`: same as PRJ-3.
 
@@ -789,6 +799,7 @@ Response `200`:
     "projects":      { "view": true, "create": false, "edit": true, "delete": false },
     "members":       { "view": true, "create": false, "edit": false, "delete": false },
     "teams":         { "view": true, "create": true, "edit": true, "delete": false },
+    "spaces":        { "view": true, "create": false, "edit": false, "delete": false },
     "task_statuses": { "view": true, "create": false, "edit": false, "delete": false },
     "tasks":         { "view": true, "create": true, "edit": true, "delete": false },
     "comments":      { "view": true, "create": true, "edit": true, "delete": false }
@@ -907,7 +918,7 @@ Response: `204 No Content`.
 
 ---
 
-## 12. Teams, statuses, tasks and comments
+## 12. Teams, spaces, statuses, tasks and comments
 
 ### TEAM-1 `GET /projects/{public_id}/teams`
 
@@ -1046,6 +1057,120 @@ Response `200`:
 
 Response: `204 No Content`.
 
+### SPC-1 `GET /projects/{public_id}/spaces`
+
+| | |
+|---|---|
+| Purpose | The project's spaces in display order (`position`, then `id`), each with its task count (one `GROUP BY` query). Used for the space tabs/sidebar and the space picker in the task form. |
+| Permission | `spaces.view` or `tasks.view` (the task form and board need the spaces) |
+| Query | `page`, `page_size` (section 4.1). The order is fixed (`position`, then `id`), so there is no `sort` parameter. |
+| Tables | spaces, tasks |
+| Errors | Common, `403`, `404` |
+
+Response `200` (paginated):
+
+```json
+{
+  "items": [
+    {
+      "id": 21,
+      "name": "General",
+      "description": null,
+      "position": 0,
+      "task_count": 8,
+      "created_at": "2026-11-16T09:00:00Z",
+      "updated_at": "2026-11-16T09:00:00Z"
+    },
+    {
+      "id": 22,
+      "name": "Backend",
+      "description": "API and database work",
+      "position": 1,
+      "task_count": 15,
+      "created_at": "2026-11-16T09:30:00Z",
+      "updated_at": "2026-11-16T09:30:00Z"
+    }
+  ],
+  "pagination": { "page": 1, "page_size": 20, "total_items": 2, "total_pages": 1 }
+}
+```
+
+### SPC-2 `POST /projects/{public_id}/spaces`
+
+| | |
+|---|---|
+| Purpose | Add a space at the end of the list (position = current max + 1) |
+| Permission | `spaces.create` |
+| Tables | spaces |
+| Errors | Common, `403`, `404`, `409 conflict` (name already used in this project, S-3), `409 project_archived` |
+
+Request:
+
+```json
+{ "name": "Backend", "description": "API and database work" }
+```
+
+`name` is 1–100 characters after trimming and must be unique within the project (`uq_spaces_project_id_name`); `description` is optional.
+
+Response `201`: same as SPC-3.
+
+### SPC-3 `GET /projects/{public_id}/spaces/{space_id}`
+
+| | |
+|---|---|
+| Purpose | One space with its task count, for the space header and the edit form |
+| Permission | `spaces.view` or `tasks.view` |
+| Tables | spaces, tasks |
+| Errors | Common, `403`, `404` (unknown id, or a space of another project) |
+
+Response `200`:
+
+```json
+{
+  "id": 22,
+  "name": "Backend",
+  "description": "API and database work",
+  "position": 1,
+  "task_count": 15,
+  "created_at": "2026-11-16T09:30:00Z",
+  "updated_at": "2026-11-16T09:30:00Z"
+}
+```
+
+### SPC-4 `PATCH /projects/{public_id}/spaces/{space_id}`
+
+| | |
+|---|---|
+| Purpose | Rename a space and/or change its description. Tasks keep pointing at the same `space_id`, so they follow the rename automatically. Spaces can't be deleted (S-4); an unused space can be renamed or left empty. |
+| Permission | `spaces.edit` |
+| Tables | spaces |
+| Errors | Common, `403`, `404`, `409 conflict` (new name already used in this project), `409 stale_update`, `409 project_archived` |
+
+Request:
+
+```json
+{ "name": "Backend API", "expected_updated_at": "2026-11-16T09:30:00Z" }
+```
+
+Response `200`: same as SPC-3.
+
+### SPC-5 `PUT /projects/{public_id}/spaces/order`
+
+| | |
+|---|---|
+| Purpose | Set the full space order in one request. `space_ids` must contain every space of the project exactly once, regardless of SPC-1 pagination. Positions become 0, 1, 2, … in one transaction, with the space rows locked in ascending id order (S-5). |
+| Permission | `spaces.edit` |
+| Tables | spaces |
+| Errors | Common, `403`, `404`, `409 project_archived`, `422 invalid_reference` (missing, extra or duplicate ids) |
+
+Request:
+
+```json
+{ "space_ids": [22, 21, 23] }
+```
+
+Response `200`: the first page of SPC-1 in the new order. Sending the same order twice gives the same result, so a retry is safe.
+
 ### STS-1 `GET /projects/{public_id}/statuses`
 
 | | |
@@ -1140,11 +1265,11 @@ Response: `204 No Content`.
 
 | | |
 |---|---|
-| Purpose | The task list and board: filter, search, sort and paginate in **one** query. Status and assignee are joined in the same query, so there are no per-task lookups (no N+1). |
+| Purpose | The task list and board: filter, search, sort and paginate in **one** query. Space, status and assignee are joined in the same query, so there are no per-task lookups (no N+1). Leave out `space_id` for the project-wide view across all spaces. |
 | Permission | `tasks.view` |
-| Query | `q` (title, or task key like `WEB-42`; min 3), `status_id`, `category` (`todo`/`in_progress`/`done`), `assignee_id`, `unassigned` (`true`), `priority` (repeatable: `priority=high&priority=urgent`), `page`, `page_size`, `sort` = `created_at` \| `updated_at` \| `number` \| `priority` \| `end_date` \| `title` (default `created_at`), `order` (default `desc`) |
-| Tables | tasks, task_statuses, users |
-| Errors | Common, `403`, `404`, `422 search_too_short` |
+| Query | `q` (title, or task key like `WEB-42`; min 3), `space_id` (one space's board or list), `status_id`, `category` (`todo`/`in_progress`/`done`), `assignee_id`, `unassigned` (`true`), `priority` (repeatable: `priority=high&priority=urgent`), `page`, `page_size`, `sort` = `created_at` \| `updated_at` \| `number` \| `priority` \| `end_date` \| `title` (default `created_at`), `order` (default `desc`) |
+| Tables | tasks, spaces, task_statuses, users |
+| Errors | Common, `403`, `404`, `422 search_too_short`, `422 invalid_reference` (`space_id` from another project) |
 
 Response `200` (paginated):
 
@@ -1156,6 +1281,7 @@ Response `200` (paginated):
       "key": "WEB-42",
       "title": "Fix login redirect",
       "priority": "high",
+      "space": { "id": 22, "name": "Backend" },
       "status": { "id": 12, "name": "In Progress", "color": "#3B82F6", "category": "in_progress" },
       "assignee": { "id": 2, "name": "Ravi Kumar" },
       "start_date": null,
@@ -1174,10 +1300,10 @@ Response `200` (paginated):
 
 | | |
 |---|---|
-| Purpose | Create a task. The number comes from the atomic `next_task_number` update (section 6). If `status_id` is left out, the first `todo`-category status by position is used (or the first status, if there is no `todo` status). |
+| Purpose | Create a task. The number comes from the atomic `next_task_number` update (section 6). If `status_id` is left out, the first `todo`-category status by position is used (or the first status, if there is no `todo` status). If `space_id` is left out, the task goes into the project's "General" space, the default space created with the project (S-2). |
 | Permission | `tasks.create` |
-| Tables | projects (`UPDATE … RETURNING`), tasks, task_statuses, user_roles (assignee check) |
-| Errors | Common, `403`, `404`, `409 project_archived`, `422 invalid_reference` (status from another project; assignee without project access) |
+| Tables | projects (`UPDATE … RETURNING`), tasks, spaces, task_statuses, user_roles (assignee check) |
+| Errors | Common, `403`, `404`, `409 project_archived`, `422 invalid_reference` (space or status from another project; assignee without project access) |
 
 Request:
 
@@ -1185,6 +1311,7 @@ Request:
 {
   "title": "Fix login redirect",
   "description": "After login, users land on /undefined.",
+  "space_id": 22,
   "status_id": 11,
   "assignee_id": 2,
   "priority": "high",
@@ -1203,7 +1330,7 @@ Response `201`: same as TSK-3.
 |---|---|
 | Purpose | Full task details for the task page |
 | Permission | `tasks.view` |
-| Tables | tasks, task_statuses, users, task_comments (count) |
+| Tables | tasks, spaces, task_statuses, users, task_comments (count) |
 | Errors | Common, `403`, `404` |
 
 Response `200`:
@@ -1215,6 +1342,7 @@ Response `200`:
   "title": "Fix login redirect",
   "description": "After login, users land on /undefined.",
   "priority": "high",
+  "space": { "id": 22, "name": "Backend" },
   "status": { "id": 12, "name": "In Progress", "color": "#3B82F6", "category": "in_progress" },
   "assignee": { "id": 2, "name": "Ravi Kumar" },
   "created_by": { "id": 1, "name": "Asha Rao" },
@@ -1232,7 +1360,7 @@ Response `200`:
 |---|---|
 | Purpose | Save the edit form. `expected_updated_at` is **required** (section 6). |
 | Permission | `tasks.edit` |
-| Tables | tasks, task_statuses, user_roles |
+| Tables | tasks, spaces, task_statuses, user_roles |
 | Errors | Common, `403`, `404`, `409 stale_update`, `409 project_archived`, `422 invalid_reference` |
 
 Request (any subset of TSK-2 fields, plus the version check):
@@ -1247,21 +1375,22 @@ Request (any subset of TSK-2 fields, plus the version check):
 
 Response `200`: same as TSK-3.
 
-### TSK-5 / TSK-6 / TSK-7 Quick actions
+### TSK-5 / TSK-6 / TSK-7 / TSK-9 Quick actions
 
 | ID | Path suffix | Request | Rule |
 |---|---|---|---|
 | TSK-5 | `/status` | `{ "status_id": 13 }` | Status must belong to this project |
 | TSK-6 | `/assignee` | `{ "assignee_id": 5 }` or `{ "assignee_id": null }` | Assignee must have project access; `null` unassigns |
 | TSK-7 | `/priority` | `{ "priority": "urgent" }` | One of `low`, `medium`, `high`, `urgent` |
+| TSK-9 | `/space` | `{ "space_id": 23 }` | Space must belong to this project. The task keeps its number and status. |
 
 | | |
 |---|---|
-| Purpose | One-field changes from the board, list or task page (drag a card, pick an assignee, change priority) |
+| Purpose | One-field changes from the board, list or task page (drag a card, pick an assignee, change priority, move to another space) |
 | Method | `PATCH /projects/{public_id}/tasks/{number}/<suffix>` |
 | Permission | `tasks.edit` |
 | Concurrency | `expected_updated_at` is optional. If sent, it's checked; if not, the last write wins (section 6). |
-| Tables | tasks (+ task_statuses or user_roles for the reference check) |
+| Tables | tasks (+ task_statuses, user_roles or spaces for the reference check) |
 | Errors | Common, `403`, `404`, `409 stale_update` (only if `expected_updated_at` was sent), `409 project_archived`, `422 invalid_reference` |
 
 Response `200`: same as TSK-3.
@@ -1375,6 +1504,8 @@ These are product rules the ER diagram and PDF don't decide. Each is the recomme
 | A-11 | Refresh rotation with reuse detection and a 30-second grace window (section 2.2) | Detects stolen refresh tokens without logging out users who have two tabs open |
 | A-12 | Passwords: 8–128 characters, no composition rules | Length matters more than symbols; the 128 cap stops someone sending a huge string to slow down hashing |
 | A-13 | Self-lockout protection: you can't deactivate yourself, change or remove your own org-wide role, or remove `roles.edit` from the role you hold | Prevents an organization from losing its last admin by accident |
+| A-14 | Add `spaces` to the feature list (P-5), so managing spaces can be granted separately from editing the project. Moving a task between spaces needs only `tasks.edit`. **Approved** as database.md S-6. | Team leads can organise spaces without being able to rename or archive the project |
+| A-15 | New projects get one default space, "General" (PRJ-1). Spaces are never deleted, so it always exists, and tasks created without `space_id` go into it. **Approved** as database.md S-2 and S-4. | `tasks.space_id` is required (S-2), so a project without spaces couldn't hold a single task, and small projects never have to think about spaces |
 
 **Not included; needs a decision:** a login rate limit (brute-force protection). A proper one needs shared storage such as Redis across server instances. Options: (a) add Redis; (b) a simple per-process limit in the POC; (c) rely on the reverse proxy (Nginx) rate limiting.
 
@@ -1398,8 +1529,8 @@ Browser ──fetch /api/v1/...──▶ Next.js route handler (BFF) ──Beare
 
 | Concern | Approach |
 |---|---|
-| Cache keys | `["projects", params]`, `["project", publicId]`, `["tasks", publicId, params]`, `["task", publicId, number]`, `["comments", publicId, number, page]`, `["statuses", publicId]`, `["teams", publicId, params]`, `["members", publicId, params]`, `["roles"]`, `["me"]` |
-| After a mutation | Invalidate exactly the affected keys. For example, creating a task invalidates `["tasks", publicId]` and `["project", publicId]` (task counts); changing a status invalidates `["tasks", publicId]`, `["task", publicId, number]` and `["statuses", publicId]`. |
+| Cache keys | `["projects", params]`, `["project", publicId]`, `["tasks", publicId, params]`, `["task", publicId, number]`, `["comments", publicId, number, page]`, `["statuses", publicId]`, `["spaces", publicId, params]`, `["space", publicId, spaceId]`, `["teams", publicId, params]`, `["members", publicId, params]`, `["roles"]`, `["me"]` |
+| After a mutation | Invalidate exactly the affected keys. For example, creating a task invalidates `["tasks", publicId]` and `["project", publicId]` (task counts); changing a status invalidates `["tasks", publicId]`, `["task", publicId, number]` and `["statuses", publicId]`; moving a task to another space (TSK-9) invalidates `["tasks", publicId]`, `["task", publicId, number]` and `["spaces", publicId]` (task counts). |
 | Board drag-and-drop | Optimistic update: move the card immediately, roll it back if TSK-5 fails |
 | Duplicate submissions | Buttons are disabled while a mutation is pending. The backend still enforces every rule on its own. |
 | `409 stale_update` | Show "Someone else changed this task", reload it, and keep the user's unsaved input visible so it isn't lost |
