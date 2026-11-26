@@ -91,6 +91,39 @@ class UpdateTaskRequest(RequestModel, _DateRange):
         return value
 
 
+# Quick actions (TSK-5, TSK-6, TSK-7, TSK-9): one field from the board, list or
+# task page. ``expected_updated_at`` is optional here: sent, it is checked;
+# left out, the last write wins (api.md section 6).
+
+
+class _QuickAction(RequestModel):
+    expected_updated_at: AwareDatetime | None = None
+
+
+class ChangeStatusRequest(_QuickAction):
+    """TSK-5: drag a card to another column."""
+
+    status_id: Id
+
+
+class ChangeAssigneeRequest(_QuickAction):
+    """TSK-6. ``assignee_id`` is required; ``null`` unassigns."""
+
+    assignee_id: Id | None
+
+
+class ChangePriorityRequest(_QuickAction):
+    """TSK-7."""
+
+    priority: TaskPriority
+
+
+class ChangeSpaceRequest(_QuickAction):
+    """TSK-9: move to another space; the task keeps its number (S-4)."""
+
+    space_id: Id
+
+
 # ── Responses ─────────────────────────────────────────────────────────────────
 
 

@@ -66,7 +66,9 @@ async def lock_for_child_write(session: AsyncSession, project_id: int) -> Projec
     can never land in a project that was archived after its check.
     """
     status = await session.scalar(
-        select(Project.status).where(Project.id == project_id).with_for_update(key_share=True)
+        select(Project.status)
+        .where(Project.id == project_id)
+        .with_for_update(read=True, key_share=True)
     )
     return ProjectStatus(status)
 

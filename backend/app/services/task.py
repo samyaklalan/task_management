@@ -1,6 +1,8 @@
-"""Tasks (docs/api.md, TSK-1 to TSK-4 and TSK-8; the quick actions follow in M12b)."""
+"""Tasks (docs/api.md, TSK-1 to TSK-9)."""
 
 import re
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +23,10 @@ from app.repositories import task_status as status_repository
 from app.schemas.common import Page, SortOrder, UserRef
 from app.schemas.task import (
     DATE_RANGE_MESSAGE,
+    ChangeAssigneeRequest,
+    ChangePriorityRequest,
+    ChangeSpaceRequest,
+    ChangeStatusRequest,
     CreateTaskRequest,
     SpaceRef,
     StatusRef,
@@ -138,6 +144,8 @@ async def get_task(session: AsyncSession, project: Project, number: int) -> Task
 
 # ── TSK-4 edit form ───────────────────────────────────────────────────────────
 
+# ── TSK-4 edit form ───────────────────────────────────────────────────────────
+
 
 async def update_task(
     session: AsyncSession, project: Project, number: int, data: UpdateTaskRequest
@@ -160,21 +168,76 @@ async def update_task(
     _check_dates(task, values)
 
     if values:
-        try:
-            async with session.begin_nested():
-                saved = await task_repository.update_if_unchanged(
-                    session,
-                    task.id,
-                    expected_updated_at=data.expected_updated_at,
-                    values=values,
-                )
-        except IntegrityError as exc:
-            _raise_if_status_gone(exc)
-            raise
-        if not saved:  # saved or deleted by someone else since our SELECT
-            raise StaleUpdateError(current=await _current(session, project, number))
-        await session.commit()
+        await _save(session, project, task, values, data.expected_updated_at)
     return await _detail(session, project, number)
+
+
+# ── TSK-5 / TSK-6 / TSK-7 / TSK-9 quick actions ───────────────────────────────
+
+
+async def change_status(
+    session: AsyncSession, project: Project, number: int, data: ChangeStatusRequest
+) -> TaskDetail:
+    task = await _get_for_quick_action(session, project, number, data.expected_updated_at)
+    await _status(session, project, data.status_id)
+    return await _quick_save(session, project, task, {"status_id": data.status_id}, data)
+
+
+async def change_assignee(
+    session: AsyncSession, project: Project, number: int, data: ChangeAssigneeRequest
+) -> TaskDetail:
+    task = await _get_for_quick_action(session, project, number, data.expected_updated_at)
+    if data.assignee_id is not None:
+        await _check_assignee(session, project, data.assignee_id)
+    return await _quick_save(session, project, task, {"assignee_id": data.assignee_id}, data)
+
+
+async def change_priority(
+    session: AsyncSession, project: Project, number: int, data: ChangePriorityRequest
+) -> TaskDetail:
+    task = await _get_for_quick_action(session, project, number, data.expected_updated_at)
+    return await _quick_save(session, project, task, {"priority": data.priority}, data)
+
+
+async def change_space(
+    session: AsyncSession, project: Project, number: int, data: ChangeSpaceRequest
+) -> TaskDetail:
+    """The task keeps its number and key: numbers belong to the project (S-4)."""
+    task = await _get_for_quick_action(session, project, number, data.expected_updated_at)
+    await _space(session, project, data.space_id)
+    return await _quick_save(session, project, task, {"space_id": data.space_id}, data)
+
+
+async def _get_for_quick_action(
+    session: AsyncSession,
+    project: Project,
+    number: int,
+    expected_updated_at: datetime | None,
+) -> Task:
+    task = await task_repository.get(session, project.id, number)
+    if task is None:
+        raise NotFoundError("Task")
+    if expected_updated_at is not None and task.updated_at != expected_updated_at:
+        raise StaleUpdateError(current=await _current(session, project, number))
+    return task
+
+
+async def _quick_save(
+    session: AsyncSession,
+    project: Project,
+    task: Task,
+    values: dict[str, Any],
+    data: (
+        ChangeStatusRequest | ChangeAssigneeRequest | ChangePriorityRequest | ChangeSpaceRequest
+    ),
+) -> TaskDetail:
+    """Write one field. Setting the value it already has writes nothing (a card
+    dropped back on its own column doesn't change ``updated_at``, so nobody
+    else's open edit form becomes stale)."""
+    ((field, value),) = values.items()
+    if getattr(task, field) != value:
+        await _save(session, project, task, values, data.expected_updated_at)
+    return await _detail(session, project, task.number)
 
 
 # ── TSK-8 delete ──────────────────────────────────────────────────────────────
@@ -183,6 +246,31 @@ async def update_task(
 async def delete_task(session: AsyncSession, project: Project, number: int) -> None:
     if not await task_repository.delete_task(session, project.id, number):
         raise NotFoundError("Task")
+    await session.commit()
+
+
+async def _save(
+    session: AsyncSession,
+    project: Project,
+    task: Task,
+    values: dict[str, Any],
+    expected_updated_at: datetime | None,
+) -> None:
+    """The UPDATE shared by TSK-4 and the quick actions, then commit."""
+    number = task.number  # read before a possible failure leaves `task` expired
+    try:
+        async with session.begin_nested():
+            saved = await task_repository.update_if_unchanged(
+                session, task.id, expected_updated_at=expected_updated_at, values=values
+            )
+    except IntegrityError as exc:
+        _raise_if_status_gone(exc)
+        raise
+    if not saved:
+        if expected_updated_at is None:  # last write wins, so no match = deleted
+            raise NotFoundError("Task")
+        # Saved or deleted by someone else since our SELECT (404 if deleted).
+        raise StaleUpdateError(current=await _current(session, project, number))
     await session.commit()
 
 

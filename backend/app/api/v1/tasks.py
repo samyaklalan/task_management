@@ -1,7 +1,7 @@
-"""TSK-1 to TSK-4 and TSK-8: a project's tasks (docs/api.md, section 12).
+"""TSK-1 to TSK-9: a project's tasks (docs/api.md, section 12).
 
 Tasks are addressed by their number (``/tasks/42`` is WEB-42); the internal id
-never appears in the API. The quick actions (TSK-5/6/7/9) follow in M12b.
+never appears in the API.
 """
 
 from typing import Annotated
@@ -20,6 +20,10 @@ from app.models.task import TaskPriority
 from app.models.task_status import TaskStatusCategory
 from app.schemas.common import ErrorResponse, Id, Page, SortOrder
 from app.schemas.task import (
+    ChangeAssigneeRequest,
+    ChangePriorityRequest,
+    ChangeSpaceRequest,
+    ChangeStatusRequest,
     CreateTaskRequest,
     TaskDetail,
     TaskListItem,
@@ -119,3 +123,53 @@ async def update_task(
 )
 async def delete_task(number: TaskNumber, session: SessionDep, project: Delete) -> None:
     await task_service.delete_task(session, project.project, number)
+
+
+# ── Quick actions (TSK-5, TSK-6, TSK-7, TSK-9) ────────────────────────────────
+
+_QUICK_ERRORS = _READ_ERRORS | {
+    409: {
+        "model": ErrorResponse,
+        "description": "stale_update (only if expected_updated_at was sent) or project_archived",
+    }
+}
+
+
+@router.patch(
+    "/{number}/status",
+    summary="Move to another status (TSK-5)",
+    responses=_QUICK_ERRORS,
+)
+async def change_status(
+    number: TaskNumber, body: ChangeStatusRequest, session: SessionDep, project: Edit
+) -> TaskDetail:
+    return await task_service.change_status(session, project.project, number, body)
+
+
+@router.patch(
+    "/{number}/assignee",
+    summary="Assign, reassign or unassign (null) (TSK-6)",
+    responses=_QUICK_ERRORS,
+)
+async def change_assignee(
+    number: TaskNumber, body: ChangeAssigneeRequest, session: SessionDep, project: Edit
+) -> TaskDetail:
+    return await task_service.change_assignee(session, project.project, number, body)
+
+
+@router.patch("/{number}/priority", summary="Change priority (TSK-7)", responses=_QUICK_ERRORS)
+async def change_priority(
+    number: TaskNumber, body: ChangePriorityRequest, session: SessionDep, project: Edit
+) -> TaskDetail:
+    return await task_service.change_priority(session, project.project, number, body)
+
+
+@router.patch(
+    "/{number}/space",
+    summary="Move to another space; the number stays (TSK-9)",
+    responses=_QUICK_ERRORS,
+)
+async def change_space(
+    number: TaskNumber, body: ChangeSpaceRequest, session: SessionDep, project: Edit
+) -> TaskDetail:
+    return await task_service.change_space(session, project.project, number, body)
