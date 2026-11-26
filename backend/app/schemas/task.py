@@ -3,6 +3,7 @@
 from datetime import date, datetime
 from typing import Annotated, Literal, Self
 
+from fastapi import Path
 from pydantic import (
     AwareDatetime,
     BaseModel,
@@ -28,6 +29,10 @@ TaskDescription = Annotated[
 ]
 
 TaskSort = Literal["created_at", "updated_at", "number", "priority", "end_date", "title"]
+
+# A task in a URL: /tasks/42 is WEB-42. tasks.number is an INTEGER column, so
+# anything above 2^31 - 1 can't exist (422 instead of a database error).
+TaskNumber = Annotated[int, Path(ge=1, le=2**31 - 1, description="The 42 of WEB-42.")]
 
 DATE_RANGE_MESSAGE = "end_date can't be before start_date"
 

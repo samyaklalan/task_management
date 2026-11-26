@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     auth,
+    comments,
     health,
     members,
     organization,
@@ -33,3 +34,4 @@ api_router.include_router(teams.router)
 api_router.include_router(spaces.router)
 api_router.include_router(statuses.router)
 api_router.include_router(tasks.router)
+api_router.include_router(comments.router)

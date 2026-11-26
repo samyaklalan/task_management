@@ -6,7 +6,7 @@ never appears in the API.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Query
 from fastapi import status as http_status
 
 from app.api.deps import (
@@ -27,6 +27,7 @@ from app.schemas.task import (
     CreateTaskRequest,
     TaskDetail,
     TaskListItem,
+    TaskNumber,
     TaskSort,
     UpdateTaskRequest,
 )
@@ -41,8 +42,6 @@ Create = Annotated[ProjectContext, require_project_permission(Feature.TASKS, Act
 Edit = Annotated[ProjectContext, require_project_permission(Feature.TASKS, Action.EDIT)]
 Delete = Annotated[ProjectContext, require_project_permission(Feature.TASKS, Action.DELETE)]
 
-# tasks.number is an INTEGER column, so anything above 2^31 - 1 can't exist.
-TaskNumber = Annotated[int, Path(ge=1, le=2**31 - 1, description="The 42 of WEB-42.")]
 
 _READ_ERRORS = {403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}}
 _WRITE_ERRORS = _READ_ERRORS | {409: {"model": ErrorResponse, "description": "project_archived"}}
