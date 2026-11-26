@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import InvalidReferenceError, NotFoundError, StaleUpdateError
 from app.models import Project, Team
+from app.repositories import member as member_repository
 from app.repositories import team as team_repository
 from app.schemas.common import Page, UserRef
 from app.schemas.team import (
@@ -115,12 +116,13 @@ async def add_members(
 ) -> AddTeamMembersResponse:
     """All or nothing: if any user can't access the project, nobody is added."""
     team = await _get(session, project, team_id)
-    with_access = await team_repository.lock_users_with_access(
+    with_access = await member_repository.lock_users_with_access(
         session,
         organization_id=project.organization_id,
         project_id=project.id,
         user_ids=data.user_ids,
     )
+
     refused = [user_id for user_id in data.user_ids if user_id not in with_access]
     if refused:
         raise InvalidReferenceError(
