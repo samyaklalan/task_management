@@ -170,3 +170,27 @@ async def remove_from_teams(session: AsyncSession, *, project_id: int, user_id: 
 #   e.g. removing Ravi from project 12:
 #     Backend (project 12) -> deleted, Frontend (project 12) -> deleted,
 #     QA (project 5) -> kept
+async def lock_users_with_access(
+    session: AsyncSession, *, organization_id: int, project_id: int, user_ids: list[int]
+) -> set[int]:
+    """Which of ``user_ids`` can access the project (MEM-1's rule: active, with
+    an org-wide role or a role in this project).
+
+    Their ``user_roles`` rows are locked ``FOR SHARE`` until commit, so a
+    simultaneous "remove member" (MEM-4) waits for us and then also undoes what
+    we did (A-7: leaves the team, task unassigned). Locked in id order, so two
+    callers can't deadlock. Used by TEAM-7 and by task assignment.
+    """
+    rows = await session.scalars(
+        select(UserRole.user_id)
+        .join(User, User.id == UserRole.user_id)
+        .where(
+            UserRole.user_id.in_(user_ids),
+            or_(UserRole.project_id == project_id, UserRole.project_id.is_(None)),
+            User.organization_id == organization_id,
+            User.is_active.is_(True),
+        )
+        .order_by(UserRole.id)
+        .with_for_update(read=True, of=UserRole)
+    )
+    return set(rows)

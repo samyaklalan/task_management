@@ -4,11 +4,11 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Row, delete, func, or_, select, update
+from sqlalchemy import Row, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Team, TeamMember, User, UserRole
+from app.models import Team, TeamMember, User
 from app.schemas.common import Pagination
 from app.schemas.team import TeamMemberSort, TeamSort
 from app.utils.pagination import PageParams, paginate
@@ -115,31 +115,6 @@ async def list_members(
         .order_by(*_MEMBER_SORT[sort])
     )
     return await paginate(session, statement, page, scalars=False)
-
-
-async def lock_users_with_access(
-    session: AsyncSession, *, organization_id: int, project_id: int, user_ids: list[int]
-) -> set[int]:
-    """Which of ``user_ids`` can access the project (MEM-1's rule: active, with
-    an org-wide role or a role in this project).
-
-    Their ``user_roles`` rows are locked ``FOR SHARE`` until commit, so a
-    simultaneous "remove member" (MEM-4) waits for us, and then also removes
-    them from this team (A-7). Locked in id order, so two adds can't deadlock.
-    """
-    rows = await session.scalars(
-        select(UserRole.user_id)
-        .join(User, User.id == UserRole.user_id)
-        .where(
-            UserRole.user_id.in_(user_ids),
-            or_(UserRole.project_id == project_id, UserRole.project_id.is_(None)),
-            User.organization_id == organization_id,
-            User.is_active.is_(True),
-        )
-        .order_by(UserRole.id)
-        .with_for_update(read=True, of=UserRole)
-    )
-    return set(rows)
 
 
 async def add_members(session: AsyncSession, *, team_id: int, user_ids: list[int]) -> set[int]:

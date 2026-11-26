@@ -12,9 +12,16 @@
 
 from typing import Annotated, Any, Literal
 
+from fastapi import Path
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
 SortOrder = Literal["asc", "desc"]
+
+# Ids are PostgreSQL BIGINT. A bigger number can't be an id, and sending it to
+# the database would fail with an error (500) instead of a clean 404/422.
+MAX_ID = 2**63 - 1
+Id = Annotated[int, Field(ge=1, le=MAX_ID)]  # an id inside a request body
+IdPath = Annotated[int, Path(ge=1, le=MAX_ID)]  # an id in the URL, e.g. /users/{user_id}
 
 # Shared by organizations, projects, teams…: max 2000 characters, blank → null.
 DESCRIPTION_MAX_LENGTH = 2000
