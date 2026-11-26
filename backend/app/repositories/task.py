@@ -190,17 +190,19 @@ async def update_if_unchanged(
     session: AsyncSession,
     task_id: int,
     *,
-    expected_updated_at: datetime,
+    expected_updated_at: datetime | None,
     values: dict[str, Any],
 ) -> bool:
-    """TSK-4's optimistic update in one statement. False: someone saved (or
-    deleted the task) since ``expected_updated_at``.
+    """One-statement update. With ``expected_updated_at`` (TSK-4, or a quick action
+    that sent a version) it only saves if nobody saved since; ``None`` (a quick
+    action without a version) is last write wins. False: no row matched (someone
+    saved meanwhile, or the task was deleted).
     IntegrityError: a status deleted a moment ago."""
+    statement = update(Task).where(Task.id == task_id)
+    if expected_updated_at is not None:  # only check the version when one was sent
+        statement = statement.where(Task.updated_at == expected_updated_at)
     changed = await session.scalar(
-        update(Task)
-        .where(Task.id == task_id, Task.updated_at == expected_updated_at)
-        .values(**values, updated_at=func.statement_timestamp())
-        .returning(Task.id)
+        statement.values(**values, updated_at=func.statement_timestamp()).returning(Task.id)
     )
     return changed is not None
 
