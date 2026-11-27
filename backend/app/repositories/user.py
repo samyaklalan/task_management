@@ -27,6 +27,19 @@ async def get_by_id(session: AsyncSession, user_id: int) -> User | None:
     return await session.get(User, user_id)
 
 
+async def get_in_organization(
+    session: AsyncSession, organization_id: int, user_id: int
+) -> User | None:
+    """A user of this organization, or ``None``.
+
+    Another organization's user gets the same ``None`` as an unknown id, so the
+    caller can't tell them apart (no leaking of other organizations' users).
+    """
+    return await session.scalar(
+        select(User).where(User.id == user_id, User.organization_id == organization_id)
+    )
+
+
 async def get_by_email(session: AsyncSession, email: str) -> User | None:
     """``email`` must already be lowercase (the schemas do that)."""
     return await session.scalar(select(User).where(User.email == email))
